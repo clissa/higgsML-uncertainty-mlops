@@ -34,4 +34,4 @@ ignore = [
 ]
 
 [tool.ruff.isort]
-known-first-party = ["conformal_prediction"]
+known-first-party = ["conformal_predictions"]
