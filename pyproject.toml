@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "conformal-prediction"
+version = "0.1.0"
+description = "Conformal prediction utilities for signal strength estimation"
+requires-python = ">=3.9"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# ---------------------------------------------------------------------
+# Code style & linting
+# ---------------------------------------------------------------------
+
+[tool.black]
+line-length = 88
+target-version = ["py39"]
+
+[tool.ruff]
+line-length = 88
+select = [
+    "E",  # pycodestyle
+    "F",  # pyflakes
+    "I",  # import order
+]
+ignore = [
+    "E203",  # compatibility with black
+]
+
+[tool.ruff.isort]
+known-first-party = ["conformal_prediction"]
