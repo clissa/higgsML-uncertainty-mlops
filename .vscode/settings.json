@@ -1,0 +1,9 @@
+{
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter"
+    },
+    "ruff.enable": true,
+    "ruff.run": "onSave"
+}
