@@ -3,14 +3,15 @@ from __future__ import annotations
 import uuid
 from dataclasses import MISSING, dataclass, fields
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, TypeAlias
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import yaml
 from numpy.typing import NDArray
+from typing_extensions import TypeAlias
 
 # -------------------------
-# Type aliases (consistent)
+# Type aliases
 # -------------------------
 Float32Array: TypeAlias = NDArray[np.float32]
 Float64Array: TypeAlias = NDArray[np.float64]
@@ -50,7 +51,7 @@ class ToyConfig:
     beta: float  # expected background events
 
     # Feature space
-    n_features: int = 2
+    n_features: int  # number of features (dimensions)
 
     # Signal feature distribution parameters
     signal_mean: Float64Array  # shape: (n_features,)
