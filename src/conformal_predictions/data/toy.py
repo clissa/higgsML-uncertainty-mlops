@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import MISSING, dataclass, fields
 from pathlib import Path
@@ -259,6 +260,70 @@ def generate_pseudo_experiment_from_yaml(
     )
 
 
+def save_pseudo_experiment(
+    output_dir: str | Path,
+    X: Float32Array,
+    y: Int64Array,
+    meta: MetaDict,
+    filename: str | None = None,
+) -> Path:
+    """
+    Save a pseudo-experiment to disk as a single .npz file:
+      - X (float32)
+      - y (int64)
+      - weights (float32) taken from meta["weights"]
+      - meta_json (string) containing the remaining metadata
+
+    Returns:
+      Path to the saved file.
+    """
+    output_dir = Path(output_dir) / f"mu={meta['mu_true']}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    pseudo_experiment_id = meta.get("pseudo_experiment_id", "unknown")
+    if filename is None:
+        filename = f"experiment_{pseudo_experiment_id}.npz"
+
+    weights = meta.get("weights", None)
+    if weights is None:
+        raise ValueError('meta must contain "weights" to save a pseudo-experiment.')
+
+    meta_to_serialize = _meta_to_jsonable(meta)
+    meta_json = json.dumps(meta_to_serialize, separators=(",", ":"), sort_keys=True)
+
+    output_path = output_dir / filename
+    np.savez_compressed(
+        output_path,
+        X=X,
+        y=y,
+        weights=np.asarray(weights),
+        meta_json=np.array(meta_json),
+    )
+    return output_path
+
+
+def load_pseudo_experiment(
+    npz_path: str | Path,
+) -> Tuple[Float32Array, Int64Array, MetaDict]:
+    """
+    Load a pseudo-experiment saved with save_pseudo_experiment.
+
+    Returns:
+      X, y, meta (with meta["weights"] restored as ndarray)
+    """
+    npz_path = Path(npz_path)
+
+    with np.load(npz_path, allow_pickle=False) as data:
+        X = data["X"].astype(np.float32, copy=False)
+        y = data["y"].astype(np.int64, copy=False)
+        weights = data["weights"].astype(np.float32, copy=False)
+        meta_json = str(data["meta_json"].item())
+
+    meta: MetaDict = json.loads(meta_json)
+    meta["weights"] = weights
+    return X, y, meta
+
+
 # -------------------------
 # Internals
 # -------------------------
@@ -386,3 +451,26 @@ def _feature_params_dict(
             "covariance": np.asarray(background_cov, dtype=np.float64),
         },
     }
+
+
+def _meta_to_jsonable(meta: MetaDict) -> MetaDict:
+    """
+    Convert meta into a JSON-serializable dict.
+    Numpy arrays -> lists; numpy scalars -> python scalars.
+    """
+
+    def convert(obj: Any) -> Any:
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, (np.integer, np.floating)):
+            return obj.item()
+        if isinstance(obj, dict):
+            return {k: convert(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [convert(v) for v in obj]
+        return obj
+
+    # Do not inline weights in JSON (saved separately as array)
+    meta_copy = dict(meta)
+    meta_copy.pop("weights", None)
+    return convert(meta_copy)
