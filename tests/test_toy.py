@@ -4,6 +4,8 @@ from conformal_predictions.data.toy import (
     ToyConfig,
     generate_pseudo_experiment,
     generate_pseudo_experiment_from_yaml,
+    load_pseudo_experiment,
+    save_pseudo_experiment,
 )
 
 
@@ -160,3 +162,55 @@ def test_reproducibility():
     assert meta1["n_total"] == meta2["n_total"]
     assert meta1["n_signal"] == meta2["n_signal"]
     assert meta1["n_background"] == meta2["n_background"]
+
+
+def test_saving_utils(tmp_path):
+    cfg = ToyConfig(
+        mu=1.0,
+        gamma=336.0,
+        beta=664.0,
+        n_features=2,
+        signal_mean=np.array([1.0, 1.0], dtype=np.float64),
+        signal_std=np.array([1.0, 1.0], dtype=np.float64),
+        signal_rho=np.array([0.2], dtype=np.float64),
+        background_mean=np.array([0.0, 0.0], dtype=np.float64),
+        background_std=np.array([1.0, 1.0], dtype=np.float64),
+        background_rho=np.array([0.0], dtype=np.float64),
+        signal_weight=336.0,
+        background_weight=664.0,
+        seed=123,
+    )
+
+    pseudo_experiment_id = "0123456789abcdef"
+    X, y, meta = generate_pseudo_experiment(
+        cfg, pseudo_experiment_id=pseudo_experiment_id
+    )
+
+    saved_path = save_pseudo_experiment(
+        output_dir=tmp_path,
+        X=X,
+        y=y,
+        meta=meta,
+    )
+
+    # Check that it saved under a mu=... subfolder
+    assert f"mu={meta['mu_true']}" in str(saved_path)
+
+    X2, y2, meta2 = load_pseudo_experiment(saved_path)
+
+    # Basic equality (exact round-trip for arrays)
+    assert np.array_equal(X, X2)
+    assert np.array_equal(y, y2)
+    assert np.array_equal(meta["weights"], meta2["weights"])
+
+    # Metadata essentials
+    assert meta2["pseudo_experiment_id"] == pseudo_experiment_id
+    assert meta2["mu_true"] == cfg.mu
+    assert meta2["gamma_true"] == cfg.gamma
+    assert meta2["beta_true"] == cfg.beta
+    assert meta2["n_total"] == meta["n_total"]
+
+    # Dtypes (as defined by the save/load utilities)
+    assert X2.dtype == np.float32
+    assert y2.dtype == np.int64
+    assert meta2["weights"].dtype == np.float32
