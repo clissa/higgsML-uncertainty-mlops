@@ -1,9 +1,14 @@
 {
     "editor.formatOnSave": true,
-    "editor.defaultFormatter": "ms-python.black-formatter",
     "[python]": {
-        "editor.defaultFormatter": "ms-python.black-formatter"
-    },
-    "ruff.enable": true,
-    "ruff.run": "onSave"
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.rulers": [
+            88
+        ],
+        "editor.wordWrap": "wordWrapColumn",
+        "editor.wordWrapColumn": 88,
+        "editor.codeActionsOnSave": {
+            "source.fixAll.ruff": true
+        }
+    }
 }
