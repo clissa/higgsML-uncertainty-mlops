@@ -3,6 +3,7 @@ import numpy as np
 from conformal_predictions.data.toy import (
     ToyConfig,
     generate_pseudo_experiment,
+    generate_pseudo_experiment_from_yaml,
 )
 
 
@@ -60,6 +61,65 @@ def test_generation():
     assert meta["gamma_true"] == cfg.gamma
     assert meta["beta_true"] == cfg.beta
     assert "feature_params" in meta
+
+
+def test_generation_from_yaml(tmp_path):
+    # Create a minimal YAML config file
+    yaml_content = """
+mu: 1.0
+gamma: 336.0
+beta: 664.0
+n_features: 2
+
+signal_mean: [1.0, 1.0]
+signal_std: [1.0, 1.0]
+signal_rho: [0.2]
+
+background_mean: [0.0, 0.0]
+background_std: [1.0, 1.0]
+background_rho: [0.0]
+
+signal_weight: 336.0
+background_weight: 664.0
+seed: 123
+"""
+    config_path = tmp_path / "toy_config.yaml"
+    config_path.write_text(yaml_content)
+
+    # Generate pseudo-experiment from YAML
+    X, y, meta = generate_pseudo_experiment_from_yaml(
+        yaml_path=config_path,
+        pseudo_experiment_id="abcdef0123456789",
+    )
+
+    # Basic sanity checks
+    assert X.ndim == 2
+    assert X.shape[1] == 2
+    assert y.shape[0] == X.shape[0]
+    assert meta["weights"].shape[0] == X.shape[0]
+
+    # Labels sanity
+    assert set(np.unique(y)).issubset({0, 1})
+
+    # Metadata consistency
+    assert meta["mu_true"] == 1.0
+    assert meta["gamma_true"] == 336.0
+    assert meta["beta_true"] == 664.0
+    assert meta["pseudo_experiment_id"] == "abcdef0123456789"
+
+    # Yield-conserving weights (only if non-empty)
+    if meta["n_signal"] > 0:
+        assert np.isclose(
+            meta["weights"][y == 1].sum(),
+            336.0,
+            rtol=1e-6,
+        )
+    if meta["n_background"] > 0:
+        assert np.isclose(
+            meta["weights"][y == 0].sum(),
+            664.0,
+            rtol=1e-6,
+        )
 
 
 def test_reproducibility():
