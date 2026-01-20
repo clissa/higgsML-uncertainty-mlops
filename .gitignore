@@ -13,9 +13,10 @@ venv*/
 results/
 outputs/
 
-# Data (se cresce)
+# Data
 data/raw/
 data/processed/
+data/toy 
 
 # Jupyter
 .ipynb_checkpoints/
