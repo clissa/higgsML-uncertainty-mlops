@@ -62,6 +62,7 @@ def _list_split_files(
     return train_files, test_files
 
 
+# TODO: Add more models and hyperparameter tuning: in particular, try probability regression VS classification.
 def _build_models(seed: int) -> Dict[str, object]:
     return {
         "GLM": LogisticRegression(
