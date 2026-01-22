@@ -154,6 +154,7 @@ def _compute_mu_hat(
 
             stats[name] = {
                 "q16": float(np.percentile(values, 16)),
+                "map": map_estimate,
                 "mu_median": float(np.median(values)),
                 "mu_mean": float(np.mean(values)),
                 "q84": float(np.percentile(values, 84)),
