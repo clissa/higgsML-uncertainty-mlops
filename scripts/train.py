@@ -15,6 +15,7 @@ from sklearn.preprocessing import StandardScaler
 
 from conformal_predictions.data.toy import load_pseudo_experiment
 
+#TODO: Refactor to support yaml config loading. It should take Settings attributes + OUTPUT_DIRNAME. Do not change parts/names that are not necessary for this.
 OUTPUT_DIRNAME = "toy-small-31"
 PLOTS_DIR = Path("results") / "plots" / OUTPUT_DIRNAME
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -181,6 +182,99 @@ def plot_nonconformity_scores(
     )
     plt.close()
 
+def contourplot_data(
+    X: np.ndarray, y: np.ndarray, output_dir: Path = Path("plots")
+) -> None:
+    """
+    Plot 2D density contours with overlaid scatter points for
+    background (y=0) and signal (y=1).
+
+    Background is drawn first, then signal.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if X.shape[1] < 2:
+        return
+    signal = X[y == 1][:, :2]
+    background = X[y == 0][:, :2]
+    if len(signal) == 0 or len(background) == 0:
+        return
+    fig, ax = plt.subplots(figsize=(9, 7))
+    # Plot limits with small margins
+    x_min, x_max = X[:, 0].min(), X[:, 0].max()
+    y_min, y_max = X[:, 1].min(), X[:, 1].max()
+    dx = 0.05 * (x_max - x_min)
+    dy = 0.05 * (y_max - y_min)
+    x_grid, y_grid = np.mgrid[
+        (x_min - dx):(x_max + dx):200j,
+        (y_min - dy):(y_max + dy):200j,
+    ]
+    grid = np.vstack([x_grid.ravel(), y_grid.ravel()])
+    # KDEs
+    background_kde = gaussian_kde(background.T)
+    signal_kde = gaussian_kde(signal.T)
+    background_density = background_kde(grid).reshape(x_grid.shape)
+    signal_density = signal_kde(grid).reshape(x_grid.shape)
+    # --- Background ---
+    ax.contourf(
+        x_grid,
+        y_grid,
+        background_density,
+        levels=10,
+        cmap="Blues",
+        alpha=0.6,
+    )
+    ax.contour(
+        x_grid,
+        y_grid,
+        background_density,
+        levels=6,
+        colors="blue",
+        linewidths=1.0,
+    )
+    ax.scatter(
+        background[:, 0],
+        background[:, 1],
+        s=8,
+        c="blue",
+        alpha=0.15,
+        label="Background",
+        rasterized=True,
+    )
+    # --- Signal ---
+    ax.contourf(
+        x_grid,
+        y_grid,
+        signal_density,
+        levels=10,
+        cmap="Reds",
+        alpha=0.6,
+    )
+    ax.contour(
+        x_grid,
+        y_grid,
+        signal_density,
+        levels=6,
+        colors="red",
+        linewidths=1.2,
+    )
+    ax.scatter(
+        signal[:, 0],
+        signal[:, 1],
+        s=10,
+        c="red",
+        alpha=0.25,
+        label="Signal",
+        rasterized=True,
+    )
+    ax.set_xlabel("Feature 0")
+    ax.set_ylabel("Feature 1")
+    ax.set_title("Signal vs Background Density")
+    ax.legend(frameon=False)
+    ax.grid(alpha=0.25)
+    plt.tight_layout()
+    plt.savefig(output_dir / "data_contour.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
 
 def _split_train_val_calib(
     X: np.ndarray,
@@ -252,6 +346,8 @@ def main() -> None:
         f"{len(y_val) - int(np.sum(y_val))} negatives "
         f"({100*(len(y_val)-np.sum(y_val))/len(y_val):.1f}%)"
     )
+
+    contourplot_data(X_val, y_val, output_dir=PLOTS_DIR)
 
     models = _build_models(cfg.seed)
     _fit_models(models, X_train_scaled, y_train)
