@@ -6,6 +6,7 @@ from typing import Dict, List, Sequence, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from scipy.stats import gaussian_kde
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
@@ -19,6 +20,10 @@ from conformal_predictions.data.toy import load_pseudo_experiment
 OUTPUT_DIRNAME = "toy-small-31"
 PLOTS_DIR = Path("results") / "plots" / OUTPUT_DIRNAME
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
+
+STATS_DIR = Path("results") / "stats" / OUTPUT_DIRNAME
+STATS_DIR.mkdir(parents=True, exist_ok=True)
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -495,15 +500,13 @@ def main() -> None:
     print("\nComputing mu_hat...")
     mu_hat, stats = _compute_mu_hat(models, scaler, calib_data, cfg.threshold)
 
-    for model_name, values in mu_hat.items():
-        if values:
-            s = stats[model_name]
-            print(
-                f"{model_name} mu_hat - mean: {s['mu_mean']:.4f}, median: {s['mu_median']:.4f}, "
-                f"q16: {s['q16']:.4f}, q84: {s['q84']:.4f}, MAP: {s['map']:.4f}"
-            )
-
     plot_mu_hat_distribution(mu_hat, stats, output_dir=PLOTS_DIR)
+    df_stats = pd.DataFrame(
+        [{"Model": model_name, **stats[model_name]} for model_name in stats.keys()]
+    )
+    print("\nStatistics Summary:")
+    print(df_stats)
+    df_stats.to_csv(STATS_DIR / "mu_hat_calibration_stats.csv", index=False)
 
 
 if __name__ == "__main__":
