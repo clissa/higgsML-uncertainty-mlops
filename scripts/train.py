@@ -1,0 +1,286 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Sequence, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.stats import gaussian_kde
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import StandardScaler
+
+from conformal_predictions.data.toy import load_pseudo_experiment
+
+OUTPUT_DIRNAME = "toy-small-31"
+PLOTS_DIR = Path("results") / "plots" / OUTPUT_DIRNAME
+PLOTS_DIR.mkdir(parents=True, exist_ok=True)
+
+@dataclass(frozen=True)
+class Settings:
+    data_dir: Path = Path("data") / "toy"
+    mu: float = 1.0
+    seed: int = 2
+    test_prefixes: Tuple[str, ...] = ("7e39", "6fcb")
+    threshold: float = 0.5
+    valid_size: float = 0.2
+    calib_size: float = 0.3
+
+
+def _experiment_prefix(path: Path) -> str:
+    stem = path.stem
+    if stem.startswith("experiment_"):
+        stem = stem[len("experiment_") :]
+    return stem[:4]
+
+
+def _list_split_files(
+    data_dir: Path, mu: float, test_prefixes: Sequence[str]
+) -> Tuple[List[Path], List[Path]]:
+    mu_dir = data_dir / f"mu={mu}"
+    files = sorted(mu_dir.glob("*.npz"))
+    if not files:
+        raise FileNotFoundError(f"No .npz files found in {mu_dir}")
+    test_files = [path for path in files if _experiment_prefix(path) in test_prefixes]
+    train_files = [path for path in files if path not in test_files]
+    if not train_files:
+        raise ValueError("No training files remain after test split.")
+    return train_files, test_files
+
+
+def _build_models(seed: int) -> Dict[str, object]:
+    return {
+        "GLM": LogisticRegression(
+            penalty="l2",
+            solver="lbfgs",
+            max_iter=1000,
+            random_state=seed,
+        ),
+        "Random Forest": RandomForestClassifier(
+            n_estimators=50,
+            criterion="gini",
+            n_jobs=-1,
+            random_state=seed,
+        ),
+        "MLP": MLPClassifier(
+            hidden_layer_sizes=(32, 16),
+            activation="relu",
+            max_iter=1000,
+            random_state=seed,
+        ),
+    }
+
+
+def _fit_models(
+    models: Dict[str, object], X_train: np.ndarray, y_train: np.ndarray
+) -> None:
+    for model in models.values():
+        model.fit(X_train, y_train)
+
+
+def _score_models(
+    models: Dict[str, object], X_val: np.ndarray, y_val: np.ndarray
+) -> Dict[str, float]:
+    return {name: float(model.score(X_val, y_val)) for name, model in models.items()}
+
+
+def _get_events_count(
+    models: Dict[str, object], X_val: np.ndarray, threshold: float
+) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+    for name, model in models.items():
+        y_pred_proba = model.predict_proba(X_val)[:, 1]
+        counts[name] = int(np.sum(y_pred_proba > threshold))
+    return counts
+
+
+def _nonconformity_scores(
+    models: Dict[str, object],
+    scaler: StandardScaler,
+    calib_data: Sequence[Tuple[np.ndarray, np.ndarray]],
+    threshold: float,
+) -> Dict[str, List[int]]:
+    scores: Dict[str, List[int]] = {name: [] for name in models}
+    for X_calib, y_calib in calib_data:
+        X_calib = scaler.transform(X_calib)
+        n_obs = int(np.sum(y_calib))
+        for name, model in models.items():
+            y_pred_proba = model.predict_proba(X_calib)[:, 1]
+            n_pred = int(np.sum(y_pred_proba > threshold))
+            scores[name].append(n_pred - n_obs)
+    return scores
+
+
+def plot_nonconformity_scores(
+    nonconf_scores: Dict[str, List[int]], output_dir: Path = Path("plots")
+) -> None:
+    """Plot nonconformity score distributions for each model and comparison."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    model_names = list(nonconf_scores.keys())
+
+    for model_name in model_names:
+        fig, ax = plt.subplots(figsize=(10, 6))
+        scores = nonconf_scores[model_name]
+
+        ax.hist(scores, bins=30, alpha=0.7, color="blue", density=True)
+
+        if len(scores) > 1:
+            density = gaussian_kde(scores)
+            xs = np.linspace(min(scores), max(scores), 200)
+            ax.plot(xs, density(xs), "k-", linewidth=2, label="KDE")
+
+        ax.set_title(f"Nonconformity Scores Distribution: {model_name}")
+        ax.set_xlabel("Nonconformity Score")
+        ax.set_ylabel("Density")
+        ax.legend()
+        ax.grid(alpha=0.3)
+
+        plt.tight_layout()
+        plt.savefig(
+            output_dir / f"scores_distribution_{model_name}.png",
+            dpi=300,
+            bbox_inches="tight",
+        )
+        plt.close()
+
+    fig, axs = plt.subplots(len(model_names), 1, figsize=(10, 5 * len(model_names)))
+    if len(model_names) == 1:
+        axs = [axs]
+
+    colors = ["blue", "green", "red"]
+    for i, model_name in enumerate(model_names):
+        scores = nonconf_scores[model_name]
+        bin_width = 1
+        axs[i].hist(
+            scores,
+            bins=np.arange(min(scores), max(scores) + bin_width, bin_width),
+            alpha=0.7,
+            color=colors[i % len(colors)],
+            density=True,
+        )
+
+        if len(scores) > 1:
+            density = gaussian_kde(scores)
+            xs = np.linspace(min(scores), max(scores), 200)
+            axs[i].plot(xs, density(xs), "k-", linewidth=2, label="KDE")
+
+        axs[i].set_title(f"{model_name}")
+        axs[i].set_xlabel("Nonconformity Score")
+        axs[i].set_ylabel("Density")
+        axs[i].legend()
+        axs[i].grid(alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(
+        output_dir / "scores_distribution_comparison.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close()
+
+
+def _split_train_val_calib(
+    X: np.ndarray,
+    y: np.ndarray,
+    valid_size: float,
+    calib_size: float,
+    seed: int,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    if valid_size < 0 or calib_size < 0 or valid_size + calib_size > 0.5:
+        raise ValueError("valid_size and calib_size must be >= 0 and sum to <= 0.5.")
+    X_temp, X_calib, y_temp, y_calib = train_test_split(
+        X, y, test_size=calib_size, stratify=y, random_state=seed
+    )
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_temp, y_temp, test_size=valid_size, stratify=y_temp, random_state=seed
+    )
+    return X_train, X_val, X_calib, y_train, y_val, y_calib
+
+
+def main() -> None:
+    cfg = Settings()
+    np.random.seed(cfg.seed)
+
+    train_files, _test_files = _list_split_files(
+        cfg.data_dir, cfg.mu, cfg.test_prefixes
+    )
+    train_blocks: List[np.ndarray] = []
+    val_blocks: List[np.ndarray] = []
+    train_labels: List[np.ndarray] = []
+    val_labels: List[np.ndarray] = []
+    calib_data: List[Tuple[np.ndarray, np.ndarray]] = []
+    for file_path in train_files:
+        X, y, _meta = load_pseudo_experiment(file_path)
+        (
+            X_train,
+            X_val,
+            X_calib,
+            y_train,
+            y_val,
+            y_calib,
+        ) = _split_train_val_calib(X, y, cfg.valid_size, cfg.calib_size, cfg.seed)
+        train_blocks.append(X_train)
+        val_blocks.append(X_val)
+        train_labels.append(y_train)
+        val_labels.append(y_val)
+        calib_data.append((X_calib, y_calib))
+
+    X_train = np.vstack(train_blocks)
+    X_val = np.vstack(val_blocks)
+    y_train = np.concatenate(train_labels)
+    y_val = np.concatenate(val_labels)
+
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_val_scaled = scaler.transform(X_val)
+
+    print("Starting training on:")
+    print(f"  X_train shape: {X_train_scaled.shape}, y_train shape: {y_train.shape}")
+    print(f"  X_val shape: {X_val_scaled.shape}, y_val shape: {y_val.shape}")
+    print(
+        f"  y_train: {int(np.sum(y_train))} positives "
+        f"({100*np.sum(y_train)/len(y_train):.1f}%), "
+        f"{len(y_train) - int(np.sum(y_train))} negatives "
+        f"({100*(len(y_train)-np.sum(y_train))/len(y_train):.1f}%)"
+    )
+    print(
+        f"  y_val: {int(np.sum(y_val))} positives "
+        f"({100*np.sum(y_val)/len(y_val):.1f}%), "
+        f"{len(y_val) - int(np.sum(y_val))} negatives "
+        f"({100*(len(y_val)-np.sum(y_val))/len(y_val):.1f}%)"
+    )
+
+    models = _build_models(cfg.seed)
+    _fit_models(models, X_train_scaled, y_train)
+
+    scores = _score_models(models, X_val_scaled, y_val)
+    for model_name, score in scores.items():
+        print(f"{model_name} validation accuracy: {score:.4f}")
+
+    counts = _get_events_count(models, X_val_scaled, cfg.threshold)
+    for model_name, count in counts.items():
+        print(
+            f"{model_name} N signal events (p_pred > {cfg.threshold}): "
+            f"{count} / {int(np.sum(y_val))} (true)"
+        )
+
+    print("\nComputing nonconformity scores...")
+    print(f"{len(calib_data)} calibration samples")
+    print(
+        f"Average calibration sample size: {
+            int(np.array([_[0].shape[0] for _ in calib_data]).mean())} observations"
+    )
+
+    nonconf_scores = _nonconformity_scores(models, scaler, calib_data, cfg.threshold)
+    for model_name, values in nonconf_scores.items():
+        mean_score = float(np.mean(values)) if values else float("nan")
+        print(f"{model_name} nonconformity mean: {mean_score:.4f}")
+
+    plot_nonconformity_scores(nonconf_scores, output_dir=PLOTS_DIR)
+
+
+if __name__ == "__main__":
+    main()
