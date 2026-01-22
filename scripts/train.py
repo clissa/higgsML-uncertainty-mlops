@@ -123,7 +123,7 @@ def _nonconformity_scores(
             y_pred_proba = model.predict_proba(X_calib)[:, 1]
             n_pred = int(np.sum(y_pred_proba > threshold))
             # TODO: USE n_obs - n_pred instead for more intuitive CI computation!
-            scores[name].append(n_pred - n_obs)
+            scores[name].append(n_obs - n_pred)
     return scores
 
 
@@ -503,8 +503,8 @@ def compute_confidence_interval(
     q16 = float(np.percentile(scores, 16))
     q84 = float(np.percentile(scores, 84))
 
-    lower_bound = n_pred - q84
-    upper_bound = n_pred - q16
+    lower_bound = n_pred + q16
+    upper_bound = n_pred + q84
 
     return lower_bound, upper_bound
 
