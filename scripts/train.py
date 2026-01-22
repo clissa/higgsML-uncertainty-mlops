@@ -158,7 +158,6 @@ def _compute_mu_hat(
                 "mu_median": float(np.median(values)),
                 "mu_mean": float(np.mean(values)),
                 "q84": float(np.percentile(values, 84)),
-                "map": map_estimate,
             }
 
     return mu_hat, stats
@@ -500,6 +499,10 @@ def main() -> None:
     plot_nonconformity_scores(nonconf_scores, output_dir=PLOTS_DIR)
     print("\nComputing mu_hat...")
     mu_hat, stats = _compute_mu_hat(models, scaler, calib_data, cfg.threshold)
+    np.savez(
+        STATS_DIR / "mu_hat_nonconf_scores.npz",
+        **{model_name: np.array(scores) for model_name, scores in mu_hat.items()},
+    )
 
     plot_mu_hat_distribution(mu_hat, stats, output_dir=PLOTS_DIR)
     df_stats = pd.DataFrame(
