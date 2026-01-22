@@ -16,7 +16,7 @@ outputs/
 # Data
 data/raw/
 data/processed/
-data/toy 
+data/toy* 
 
 # Jupyter
 .ipynb_checkpoints/
