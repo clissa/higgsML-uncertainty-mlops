@@ -592,10 +592,16 @@ def main() -> None:
     plot_nonconformity_scores(nonconf_scores, output_dir=PLOTS_DIR)
     print("\nComputing mu_hat...")
     mu_hat, stats = _compute_mu_hat(models, scaler, calib_data, cfg.threshold)
-    #TODO: save n_pred nonconformity scores instead of mu_hat scores
     np.savez(
         STATS_DIR / "mu_hat_nonconf_scores.npz",
         **{model_name: np.array(scores) for model_name, scores in mu_hat.items()},
+    )
+    np.savez(
+        STATS_DIR / "n_pred_nonconf_scores.npz",
+        **{
+            model_name: np.array(scores)
+            for model_name, scores in nonconf_scores.items()
+        },
     )
 
     plot_mu_hat_distribution(mu_hat, stats, output_dir=PLOTS_DIR)
@@ -627,21 +633,14 @@ def main() -> None:
     print("\nComputing confidence intervals for test set...")
 
     # Load nonconformity scores for computing intervals
-    nonconf_scores_file = STATS_DIR / "mu_hat_nonconf_scores.npz"
+    # nonconf_scores_file = STATS_DIR / "mu_hat_nonconf_scores.npz"
+    nonconf_scores_file = STATS_DIR / "n_pred_nonconf_scores.npz"
 
     for i, (model_name, mu_hat_values) in enumerate(mu_hat_test.items()):
         n_preds = mu_hat_values * np.array(gamma_true_list)
         n_lower, n_upper = compute_confidence_interval(
             n_preds, nonconf_scores_file, model_name
         )
-
-        # TODO: Fix nonconf_scores: scores for n_pred - n_obs, not mu_hat should be used.
-        # scores = nonconf_scores[model_name]
-        # q16 = float(np.percentile(scores, 16))
-        # q84 = float(np.percentile(scores, 84))
-
-        # n_lower = n_preds - q84
-        # n_upper = n_preds - q16
 
         mu_hat_lower_bounds = n_lower / np.array(gamma_true_list)
         mu_hat_upper_bounds = n_upper / np.array(gamma_true_list)
