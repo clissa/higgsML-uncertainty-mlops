@@ -30,7 +30,8 @@ def main() -> None:
         "--id",
         type=str,
         default=None,
-        help="Optional 16-char hex pseudo_experiment_id. If omitted, a random one is generated.",
+        help="Optional 16-char hex pseudo_experiment_id. If omitted, a random one is"
+        " generated.",
     )
     args = parser.parse_args()
 
