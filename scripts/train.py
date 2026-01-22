@@ -46,6 +46,11 @@ def _list_split_files(
     if not files:
         raise FileNotFoundError(f"No .npz files found in {mu_dir}")
     test_files = [path for path in files if _experiment_prefix(path) in test_prefixes]
+    if not test_files:
+        print(
+            "No test files found with the specified prefixes. Falling back to 5 random files."
+        )
+        test_files = list(np.random.choice(files, size=5, replace=False))
     train_files = [path for path in files if path not in test_files]
     if not train_files:
         raise ValueError("No training files remain after test split.")
