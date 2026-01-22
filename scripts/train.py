@@ -475,6 +475,36 @@ def _inference_on_test_set(
     return mu_hat_test, mu_true_list, gamma_true_list
 
 
+def compute_confidence_interval(
+    n_pred: int,
+    nonconf_scores_file: Path,
+    model_name: str,
+) -> Tuple[float, float]:
+    """
+    Compute confidence interval from calibration nonconformity scores.
+
+    Args:
+        n_pred: Number of predicted signal events
+        nonconf_scores_file: Path to .npz file containing nonconformity scores
+        model_name: Name of the model to extract scores for
+
+    Returns:
+        Tuple of (lower_bound, upper_bound) for the confidence interval
+    """
+    data = np.load(nonconf_scores_file)
+    if model_name not in data:
+        raise KeyError(f"Model '{model_name}' not found in {nonconf_scores_file}")
+
+    scores = data[model_name]
+    q16 = float(np.percentile(scores, 16))
+    q84 = float(np.percentile(scores, 84))
+
+    lower_bound = n_pred - q84
+    upper_bound = n_pred - q16
+
+    return lower_bound, upper_bound
+
+
 def main() -> None:
     cfg = Settings()
     np.random.seed(cfg.seed)
@@ -587,6 +617,45 @@ def main() -> None:
         print(f"  {model_name}: mean={np.mean(values):.4f}, std={np.std(values):.4f}")
     print(f"  mu_true values: {mu_true_list}")
     print(f"  gamma_true values: {gamma_true_list}")
+
+    # Compute confidence intervals for test set predictions
+    print("\nComputing confidence intervals for test set...")
+
+    # Load nonconformity scores for computing intervals
+    nonconf_scores_file = STATS_DIR / "mu_hat_nonconf_scores.npz"
+
+    for i, (model_name, mu_hat_values) in enumerate(mu_hat_test.items()):
+        n_preds = mu_hat_values * np.array(gamma_true_list)
+        n_lower, n_upper = compute_confidence_interval(
+            n_preds, nonconf_scores_file, model_name
+        )
+
+        # TODO: Fix nonconf_scores: scores for n_pred - n_obs, not mu_hat should be used.
+        # scores = nonconf_scores[model_name]
+        # q16 = float(np.percentile(scores, 16))
+        # q84 = float(np.percentile(scores, 84))
+
+        # n_lower = n_preds - q84
+        # n_upper = n_preds - q16
+
+        mu_hat_lower_bounds = n_lower / np.array(gamma_true_list)
+        mu_hat_upper_bounds = n_upper / np.array(gamma_true_list)
+        print(f"\nModel: {model_name}\n")
+        exp_idx = 1
+        for mu_hat, mu_hat_lower, mu_hat_upper, mu_true in zip(
+            mu_hat_values, mu_hat_lower_bounds, mu_hat_upper_bounds, mu_true_list
+        ):
+            # Determine color based on whether CI contains mu_true
+            color = "\033[92m" if mu_hat_lower < mu_true < mu_hat_upper else "\033[91m"
+            reset = "\033[0m"
+            print(
+                f"  {color}Exp {exp_idx}: "
+                f"μ̂: {mu_hat:.3f} "
+                f"CI: [{mu_hat_lower:.3f}, {mu_hat_upper:.3f}] "
+                f"μ_true: {mu_true:.3f}{reset}"
+            )
+            exp_idx += 1
+
 
 if __name__ == "__main__":
     main()
