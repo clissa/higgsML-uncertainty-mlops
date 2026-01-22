@@ -16,8 +16,8 @@ from sklearn.preprocessing import StandardScaler
 
 from conformal_predictions.data.toy import load_pseudo_experiment
 
-#TODO: Refactor to support yaml config loading. It should take Settings attributes + OUTPUT_DIRNAME. Do not change parts/names that are not necessary for this.
-OUTPUT_DIRNAME = "toy-small-31"
+# TODO: Refactor to support yaml config loading. It should take Settings attributes + OUTPUT_DIRNAME. Do not change parts/names that are not necessary for this.
+OUTPUT_DIRNAME = "toy-scale-95"
 PLOTS_DIR = Path("results") / "plots" / OUTPUT_DIRNAME
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -27,9 +27,9 @@ STATS_DIR.mkdir(parents=True, exist_ok=True)
 
 @dataclass(frozen=True)
 class Settings:
-    data_dir: Path = Path("data") / "toy"
+    data_dir: Path = Path("data") / "toy_scale"
     mu: float = 1.0
-    seed: int = 2
+    seed: int = 18
     test_prefixes: Tuple[str, ...] = ("7e39", "6fcb")
     threshold: float = 0.5
     valid_size: float = 0.2
@@ -92,6 +92,7 @@ def _fit_models(
         model.fit(X_train, y_train)
 
 
+# TODO: Add ROC AUC scoring as well. Important for linking model bias to Precision-Recall
 def _score_models(
     models: Dict[str, object], X_val: np.ndarray, y_val: np.ndarray
 ) -> Dict[str, float]:
@@ -121,6 +122,7 @@ def _nonconformity_scores(
         for name, model in models.items():
             y_pred_proba = model.predict_proba(X_calib)[:, 1]
             n_pred = int(np.sum(y_pred_proba > threshold))
+            # TODO: USE n_obs - n_pred instead for more intuitive CI computation!
             scores[name].append(n_pred - n_obs)
     return scores
 
@@ -134,6 +136,7 @@ def _compute_mu_hat(
     mu_hat: Dict[str, List[float]] = {name: [] for name in models}
     for X_calib, y_calib in calib_data:
         X_calib = scaler.transform(X_calib)
+        # TODO: fix using gamma_true from metadata!
         gamma_true = int(np.sum(y_calib))
         if gamma_true == 0:
             continue
@@ -304,6 +307,7 @@ def plot_nonconformity_scores(
     )
     plt.close()
 
+
 def contourplot_data(
     X: np.ndarray, y: np.ndarray, output_dir: Path = Path("plots")
 ) -> None:
@@ -327,8 +331,8 @@ def contourplot_data(
     dx = 0.05 * (x_max - x_min)
     dy = 0.05 * (y_max - y_min)
     x_grid, y_grid = np.mgrid[
-        (x_min - dx):(x_max + dx):200j,
-        (y_min - dy):(y_max + dy):200j,
+        (x_min - dx) : (x_max + dx) : 200j,
+        (y_min - dy) : (y_max + dy) : 200j,
     ]
     grid = np.vstack([x_grid.ravel(), y_grid.ravel()])
     # KDEs
@@ -588,6 +592,7 @@ def main() -> None:
     plot_nonconformity_scores(nonconf_scores, output_dir=PLOTS_DIR)
     print("\nComputing mu_hat...")
     mu_hat, stats = _compute_mu_hat(models, scaler, calib_data, cfg.threshold)
+    #TODO: save n_pred nonconformity scores instead of mu_hat scores
     np.savez(
         STATS_DIR / "mu_hat_nonconf_scores.npz",
         **{model_name: np.array(scores) for model_name, scores in mu_hat.items()},
