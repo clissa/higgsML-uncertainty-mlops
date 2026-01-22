@@ -120,6 +120,118 @@ def _nonconformity_scores(
     return scores
 
 
+def _compute_mu_hat(
+    models: Dict[str, object],
+    scaler: StandardScaler,
+    calib_data: Sequence[Tuple[np.ndarray, np.ndarray]],
+    threshold: float,
+) -> Tuple[Dict[str, List[float]], Dict[str, Dict[str, float]]]:
+    mu_hat: Dict[str, List[float]] = {name: [] for name in models}
+    for X_calib, y_calib in calib_data:
+        X_calib = scaler.transform(X_calib)
+        gamma_true = int(np.sum(y_calib))
+        if gamma_true == 0:
+            continue
+        for name, model in models.items():
+            y_pred_proba = model.predict_proba(X_calib)[:, 1]
+            n_pred = int(np.sum(y_pred_proba > threshold))
+            mu_hat[name].append(n_pred / gamma_true)
+
+    # Compute statistics
+    stats: Dict[str, Dict[str, float]] = {}
+    for name, values in mu_hat.items():
+        if len(values) > 0:
+            # Compute KDE for MAP estimation
+            density = gaussian_kde(values)
+            xs = np.linspace(min(values), max(values), 1000)
+            density_vals = density(xs)
+            map_estimate = float(xs[np.argmax(density_vals)])
+
+            stats[name] = {
+                "q16": float(np.percentile(values, 16)),
+                "mu_median": float(np.median(values)),
+                "mu_mean": float(np.mean(values)),
+                "q84": float(np.percentile(values, 84)),
+                "map": map_estimate,
+            }
+
+    return mu_hat, stats
+
+
+def plot_mu_hat_distribution(
+    mu_hat: Dict[str, List[float]],
+    stats: Dict[str, Dict[str, float]],
+    output_dir: Path = Path("plots"),
+) -> None:
+    """Plot mu_hat distributions."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    model_names = list(mu_hat.keys())
+
+    for model_name in model_names:
+        values = mu_hat[model_name]
+        if len(values) == 0:
+            continue
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.hist(values, bins=30, alpha=0.7, color="blue", density=True)
+
+        if len(values) > 1:
+            density = gaussian_kde(values)
+            xs = np.linspace(min(values), max(values), 200)
+            ax.plot(xs, density(xs), "k-", linewidth=2, label="KDE")
+
+        s = stats[model_name]
+        ax.axvline(
+            s["q16"],
+            color="green",
+            linestyle="--",
+            linewidth=2,
+            label=f"q16: {s['q16']:.3f}",
+        )
+        ax.axvline(
+            s["mu_median"],
+            color="orange",
+            linestyle="--",
+            linewidth=2,
+            label=f"median: {s['mu_median']:.3f}",
+        )
+        ax.axvline(
+            s["mu_mean"],
+            color="red",
+            linestyle="--",
+            linewidth=2,
+            label=f"mean: {s['mu_mean']:.3f}",
+        )
+        ax.axvline(
+            s["q84"],
+            color="purple",
+            linestyle="--",
+            linewidth=2,
+            label=f"q84: {s['q84']:.3f}",
+        )
+        ax.axvline(
+            s["map"],
+            color="blue",
+            linestyle="--",
+            linewidth=2,
+            label=f"MAP: {s['map']:.3f}",
+        )
+
+        ax.set_title(f"μ̂ Distribution: {model_name}")
+        ax.set_xlabel("μ̂ = n_pred / γ_true")
+        ax.set_ylabel("Density")
+        ax.legend()
+        ax.grid(alpha=0.3)
+
+        plt.tight_layout()
+        plt.savefig(
+            output_dir / f"mu_hat_distribution_{model_name}.png",
+            dpi=300,
+            bbox_inches="tight",
+        )
+        plt.close()
+
+
 def plot_nonconformity_scores(
     nonconf_scores: Dict[str, List[int]], output_dir: Path = Path("plots")
 ) -> None:
@@ -380,6 +492,18 @@ def main() -> None:
         print(f"{model_name} nonconformity mean: {mean_score:.4f}")
 
     plot_nonconformity_scores(nonconf_scores, output_dir=PLOTS_DIR)
+    print("\nComputing mu_hat...")
+    mu_hat, stats = _compute_mu_hat(models, scaler, calib_data, cfg.threshold)
+
+    for model_name, values in mu_hat.items():
+        if values:
+            s = stats[model_name]
+            print(
+                f"{model_name} mu_hat - mean: {s['mu_mean']:.4f}, median: {s['mu_median']:.4f}, "
+                f"q16: {s['q16']:.4f}, q84: {s['q84']:.4f}, MAP: {s['map']:.4f}"
+            )
+
+    plot_mu_hat_distribution(mu_hat, stats, output_dir=PLOTS_DIR)
 
 
 if __name__ == "__main__":
