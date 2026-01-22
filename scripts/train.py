@@ -366,8 +366,7 @@ def main() -> None:
     print("\nComputing nonconformity scores...")
     print(f"{len(calib_data)} calibration samples")
     print(
-        f"Average calibration sample size: {
-            int(np.array([_[0].shape[0] for _ in calib_data]).mean())} observations"
+        f"Average calibration sample size: {int(np.array([_[0].shape[0] for _ in calib_data]).mean())} observations"
     )
 
     nonconf_scores = _nonconformity_scores(models, scaler, calib_data, cfg.threshold)
