@@ -416,6 +416,65 @@ def _split_train_val_calib(
     return X_train, X_val, X_calib, y_train, y_val, y_calib
 
 
+def _inference_on_test_set(
+    models: Dict[str, object],
+    scaler: StandardScaler,
+    test_data: Sequence[Tuple[np.ndarray, np.ndarray, dict]],
+    threshold: float,
+) -> Tuple[Dict[str, List[float]], List[float], List[int]]:
+    """
+    Compute mu_hat estimates on test set pseudo-experiments.
+
+    Args:
+        models: Dictionary of trained models
+        scaler: Fitted StandardScaler for feature normalization
+        test_data: Sequence of (X, y, meta_dict) tuples for test experiments
+        threshold: Decision threshold for classification
+
+    Returns:
+        mu_hat_test: Dictionary mapping model names to lists of mu_hat values (one per experiment)
+        mu_true_list: List of mu_true values (one per experiment)
+        gamma_true_list: List of gamma_true values (one per experiment)
+    """
+    mu_hat_test: Dict[str, List[float]] = {name: [] for name in models}
+    mu_true_list: List[float] = []
+    gamma_true_list: List[int] = []
+
+    for X_test, y_test, meta_dict in test_data:
+        # Transform features
+        X_test_scaled = scaler.transform(X_test)
+
+        # Get gamma_true from metadata
+        gamma_true = meta_dict["gamma_true"]
+        mu_true = meta_dict["mu_true"]
+        mu_true_list.append(float(mu_true))
+        gamma_true_list.append(int(gamma_true))
+
+        if gamma_true == 0:
+            continue
+
+        # Compute predictions for each model
+        for name, model in models.items():
+            # Get probability predictions for signal class
+            y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
+
+            # Count predicted signal events
+            n_pred = int(np.sum(y_pred_proba > threshold))
+
+            # Compute mu_hat
+            mu_hat = n_pred / gamma_true
+            mu_hat_test[name].append(mu_hat)
+
+            # Debug prints
+            print("\nDebug prints:", name)
+            n_obs = int(np.sum(y_test))
+            print(
+                f"\tExperiment: mu_true={mu_true:.4f}, gamma_true={gamma_true}, n_obs={n_obs}, n_pred={n_pred}, mu_hat={mu_hat:.4f}"
+            )
+
+    return mu_hat_test, mu_true_list, gamma_true_list
+
+
 def main() -> None:
     cfg = Settings()
     np.random.seed(cfg.seed)
@@ -512,6 +571,22 @@ def main() -> None:
     print(df_stats)
     df_stats.to_csv(STATS_DIR / "mu_hat_calibration_stats.csv", index=False)
 
+    print("\nRunning inference on test set...")
+    test_data = []
+    for file_path in _test_files:
+        X_test, y_test, meta = load_pseudo_experiment(file_path)
+        test_data.append((X_test, y_test, meta))
+
+    mu_hat_test, mu_true_list, gamma_true_list = _inference_on_test_set(
+        models, scaler, test_data, cfg.threshold
+    )
+
+    print("\nTest set mu_hat estimates:")
+    for model_name, values in mu_hat_test.items():
+        print(f"  {model_name}: values={values}")
+        print(f"  {model_name}: mean={np.mean(values):.4f}, std={np.std(values):.4f}")
+    print(f"  mu_true values: {mu_true_list}")
+    print(f"  gamma_true values: {gamma_true_list}")
 
 if __name__ == "__main__":
     main()
