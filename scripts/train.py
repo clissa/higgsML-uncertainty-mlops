@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,7 +17,7 @@ from sklearn.preprocessing import StandardScaler
 from conformal_predictions.data.toy import load_pseudo_experiment
 
 # TODO: Refactor to support yaml config loading. It should take Settings attributes + OUTPUT_DIRNAME. Do not change parts/names that are not necessary for this.
-OUTPUT_DIRNAME = "toy-scale-easy-95"
+OUTPUT_DIRNAME = "toy-scale-100-tests"
 PLOTS_DIR = Path("results") / OUTPUT_DIRNAME / "plots"
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -35,6 +35,9 @@ class Settings:
     valid_size: float = 0.2
     calib_size: float = 0.3
     nonconf_target: str = "mu_hat"  # can be "n_pred" or "mu_hat"
+    n_test_experiments: int = (
+        100  # number of test pseudo-experiments to select if no prefixes match
+    )
 
 
 def _experiment_prefix(path: Path) -> str:
@@ -45,7 +48,10 @@ def _experiment_prefix(path: Path) -> str:
 
 
 def _list_split_files(
-    data_dir: Path, mu: float, test_prefixes: Sequence[str]
+    data_dir: Path,
+    mu: float,
+    test_prefixes: Optional[Sequence[str]],
+    n_test_experiments: Optional[int],
 ) -> Tuple[List[Path], List[Path]]:
     mu_dir = data_dir / f"mu={mu}"
     files = sorted(mu_dir.glob("*.npz"))
@@ -56,7 +62,9 @@ def _list_split_files(
         print(
             "No test files found with the specified prefixes. Falling back to 5 random files."
         )
-        test_files = list(np.random.choice(files, size=5, replace=False))
+        test_files = list(
+            np.random.choice(files, size=n_test_experiments, replace=False)
+        )
     train_files = [path for path in files if path not in test_files]
     if not train_files:
         raise ValueError("No training files remain after test split.")
@@ -549,6 +557,7 @@ def _inference_on_test_set(
     scaler: StandardScaler,
     test_data: Sequence[Tuple[np.ndarray, np.ndarray, dict]],
     threshold: float,
+    debug: bool = False,
 ) -> Tuple[Dict[str, List[float]], List[float], List[int]]:
     """
     Compute mu_hat estimates on test set pseudo-experiments.
@@ -594,12 +603,12 @@ def _inference_on_test_set(
             mu_hat_test[name].append(mu_hat)
 
             # Debug prints
-            print("\nDebug prints:", name)
-            n_obs = int(np.sum(y_test))
-            print(
-                f"\tExperiment: mu_true={mu_true:.4f}, gamma_true={gamma_true}, n_obs={n_obs}, n_pred={n_pred}, mu_hat={mu_hat:.4f}"
-            )
-
+            if debug:
+                print("\nDebug prints:", name)
+                n_obs = int(np.sum(y_test))
+                print(
+                    f"\tExperiment: mu_true={mu_true:.4f}, gamma_true={gamma_true}, n_obs={n_obs}, n_pred={n_pred}, mu_hat={mu_hat:.4f}"
+                )
     return mu_hat_test, mu_true_list, gamma_true_list
 
 
@@ -638,7 +647,7 @@ def main() -> None:
     np.random.seed(cfg.seed)
 
     train_files, _test_files = _list_split_files(
-        cfg.data_dir, cfg.mu, cfg.test_prefixes
+        cfg.data_dir, cfg.mu, cfg.test_prefixes, cfg.n_test_experiments
     )
     train_blocks: List[np.ndarray] = []
     val_blocks: List[np.ndarray] = []
