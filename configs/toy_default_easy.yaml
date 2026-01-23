@@ -1,0 +1,28 @@
+# This configuration reproduces cross sections from the Higgs uncertainty challenge sample data 
+# (available at: https://github.com/FAIR-Universe/FAIR_Universe_dataset/tree/main/sample_data )
+# The goal is to create an easier separation between signal and background
+
+# Physics / counting parameters
+mu: 1.0
+gamma: 336.0
+beta: 664.0
+
+# Feature space
+n_features: 2
+
+# Signal feature distribution parameters
+signal_mean: [-7.0, -2.0]
+signal_std:  [1.5, 1.0]
+signal_rho:  [0.4]
+
+# Background feature distribution parameters
+background_mean: [5.0, 8.0]
+background_std:  [2.0, 3.0]
+background_rho:  [-0.2]
+
+# Yield-conserving totals (sum of weights per class within a pseudo-experiment)
+signal_weight: 1038.6263
+background_weight: 1050394.2
+
+# Reproducibility: set to null for fully random runs
+seed: 4
