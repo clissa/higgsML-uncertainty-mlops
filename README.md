@@ -84,15 +84,45 @@ print(meta)
 EOF
 ```
 
+## Usage
+
+Scripts in `scripts/` are the main entry points for data generation and toy
+training. Run them from the repository root after installing dependencies.
+
+Generate a single pseudo-experiment from a YAML config:
+
+```bash
+python scripts/generate_one_experiment.py --config configs/toy_default.yaml --outdir data/toy_pseudo-experiment
+```
+
+Generate multiple pseudo-experiments (optionally in parallel):
+
+```bash
+python scripts/generate_experiments.py --config configs/toy_default.yaml --outdir data/toy_scale --n-experiments 10 --n-workers 4
+```
+
+Run the toy training and conformal workflow:
+
+```bash
+python scripts/train.py
+```
+
+`scripts/train.py` currently reads settings from the `Settings` dataclass and
+`OUTPUT_DIRNAME` near the top of the file; it expects toy data under
+`data/toy_scale_easy` and writes outputs to `results/<OUTPUT_DIRNAME>/`.
+
 ## Planned extensions
 
 The following components will be developed incrementally:
 
-- ML model wrappers (logistic regression, tree-based models, neural networks)
+- support yaml train config
 
-- conformal prediction calibration and interval construction
+- add soft counting alternative: $n_{\text{pred}} = \sum_i p_{\text{pred}_i}$ instead of $\sum_i \mathbb{1}(p_{\text{pred}_i} > \text{threshold})$
 
-- aggregation strategies for signal strength estimation
+- add plottings of CI VS mu_true values on test pseudo-experiments
+
+- refactoring: modularize train.py offloading reusable utils into
+  src/conformal_predictions submodules
 
 - comparison with alternative uncertainty estimation methods
 
