@@ -18,10 +18,10 @@ from conformal_predictions.data.toy import load_pseudo_experiment
 
 # TODO: Refactor to support yaml config loading. It should take Settings attributes + OUTPUT_DIRNAME. Do not change parts/names that are not necessary for this.
 OUTPUT_DIRNAME = "toy-scale-95"
-PLOTS_DIR = Path("results") / "plots" / OUTPUT_DIRNAME
+PLOTS_DIR = Path("results") / OUTPUT_DIRNAME / "plots"
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
-STATS_DIR = Path("results") / "stats" / OUTPUT_DIRNAME
+STATS_DIR = Path("results") / OUTPUT_DIRNAME / "stats"
 STATS_DIR.mkdir(parents=True, exist_ok=True)
 
 
