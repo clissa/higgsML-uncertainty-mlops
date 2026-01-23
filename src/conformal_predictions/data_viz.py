@@ -152,6 +152,7 @@ def plot_nonconformity_scores(
     plt.close()
 
 
+# TODO: understand and fix the issue with replicated figures when running multiple times
 def plot_CI(
     exp_idx: int,
     mu_hat: float,
