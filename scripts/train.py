@@ -115,7 +115,7 @@ def _random_perturbation_for_numerical_stability():
 
 
 def _nonconformity_scores(pred, target):
-    return (pred - target) + _random_perturbation_for_numerical_stability()
+    return (target - pred) + _random_perturbation_for_numerical_stability()
 
 
 def compute_nonconformity_scores(
@@ -137,13 +137,9 @@ def compute_nonconformity_scores(
             n_pred = int(np.sum(y_pred_proba > threshold))
             if target == "mu_hat":
                 mu_hat = n_pred / gamma_true if gamma_true > 0 else 0.0
-                scores[name].append(
-                    mu_hat - mu_true + _random_perturbation_for_numerical_stability()
-                )
+                scores[name].append(_nonconformity_scores(mu_hat, mu_true))
             elif target == "n_pred":
-                scores[name].append(
-                    n_obs - n_pred + _random_perturbation_for_numerical_stability()
-                )
+                scores[name].append(_nonconformity_scores(n_pred, n_obs))
     return scores
 
 
