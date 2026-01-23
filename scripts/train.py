@@ -110,12 +110,16 @@ def _get_events_count(
     return counts
 
 
-def _random_perturbation_for_numerical_stability():
+def _random_perturbation_for_numerical_stability() -> float:
     return np.random.normal(0, 1e-6)
 
 
-def _nonconformity_scores(pred, target):
+def _nonconformity_scores(pred, target) -> float:
     return (target - pred) + _random_perturbation_for_numerical_stability()
+
+
+def _get_proportionate_gamma(meta: dict, y: int) -> float:
+    return meta["gamma_true"] / meta["nu_expected"] * len(y)
 
 
 def compute_nonconformity_scores(
@@ -131,7 +135,7 @@ def compute_nonconformity_scores(
         X_calib = scaler.transform(X_calib)
         n_obs = int(np.sum(y_calib))
         mu_true = _meta["mu_true"]
-        gamma_true = _meta["gamma_true"]
+        gamma_true = _get_proportionate_gamma(_meta, y_calib)
         for name, model in models.items():
             y_pred_proba = model.predict_proba(X_calib)[:, 1]
             n_pred = int(np.sum(y_pred_proba > threshold))
@@ -153,8 +157,7 @@ def _compute_mu_hat(
     mu_hat: Dict[str, List[float]] = {name: [] for name in models}
     for (X_calib, y_calib), meta in zip(calib_data, calib_meta):
         X_calib = scaler.transform(X_calib)
-        # TODO: fix using gamma_true from metadata!
-        gamma_true = meta["gamma_true"]
+        gamma_true = _get_proportionate_gamma(meta, y_calib)
         if gamma_true == 0:
             continue
         for name, model in models.items():
