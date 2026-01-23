@@ -17,7 +17,7 @@ from sklearn.preprocessing import StandardScaler
 from conformal_predictions.data.toy import load_pseudo_experiment
 
 # TODO: Refactor to support yaml config loading. It should take Settings attributes + OUTPUT_DIRNAME. Do not change parts/names that are not necessary for this.
-OUTPUT_DIRNAME = "toy-scale-95"
+OUTPUT_DIRNAME = "toy-scale-easy-95"
 PLOTS_DIR = Path("results") / OUTPUT_DIRNAME / "plots"
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -27,7 +27,7 @@ STATS_DIR.mkdir(parents=True, exist_ok=True)
 
 @dataclass(frozen=True)
 class Settings:
-    data_dir: Path = Path("data") / "toy_scale"
+    data_dir: Path = Path("data") / "toy_scale_easy"
     mu: float = 1.0
     seed: int = 18
     test_prefixes: Tuple[str, ...] = ("7e39", "6fcb")
