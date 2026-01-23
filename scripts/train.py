@@ -333,6 +333,105 @@ def plot_nonconformity_scores(
     plt.close()
 
 
+def plot_confidence_intervals(
+    mu_hat_values: List[float],
+    mu_hat_lower_bounds: List[float],
+    mu_hat_upper_bounds: List[float],
+    mu_true_list: List[float],
+    model_name: str,
+    empirical_coverage: float,
+    output_dir: Path = STATS_DIR,
+) -> None:
+    """Plot confidence intervals for mu_hat estimates."""
+    fontsize = 11
+    output_dir.mkdir(parents=True, exist_ok=True)
+    # Create plot for confidence intervals
+    fig, ax = plt.subplots(figsize=(12, max(6, len(mu_hat_values) * 0.5)))
+
+    for exp_idx, (mu_hat, mu_hat_lower, mu_hat_upper, mu_true) in enumerate(
+        zip(mu_hat_values, mu_hat_lower_bounds, mu_hat_upper_bounds, mu_true_list),
+        start=1,
+    ):
+        # Determine if CI contains mu_true
+        hat_color = "green" if mu_hat_lower < mu_true < mu_hat_upper else "red"
+
+        # Use different colors for different experiments
+        line_color = "blue"  # f"C{exp_idx % 10}"
+
+        # Plot horizontal line for CI
+        ax.hlines(exp_idx, mu_hat_lower, mu_hat_upper, colors=line_color, linewidth=2)
+
+        # Plot mu_hat as circle
+        ax.plot(
+            mu_hat,
+            exp_idx,
+            "o",
+            color=hat_color,
+            markersize=12,
+            label=f"μ̂ (Exp {exp_idx})",
+        )
+
+        # Plot mu_true as triangle
+        ax.plot(mu_true, exp_idx, "^", color=line_color, markersize=12)
+
+        # Add text annotations
+        ax.text(
+            mu_hat,
+            exp_idx + 0.25,
+            f"μ̂={mu_hat:.2f}",
+            ha="center",
+            va="bottom",
+            fontsize=fontsize,
+            color=hat_color,
+        )
+        ax.text(
+            mu_true,
+            exp_idx + 0.25,
+            f"μ={mu_true:.2f}",
+            ha="center",
+            va="top",
+            fontsize=fontsize,
+            color=line_color,
+        )
+        ax.text(
+            mu_hat_lower,
+            exp_idx + 0.25,
+            f"\nCI: [{mu_hat_lower:.2f}, {mu_hat_upper:.2f}]",
+            ha="left",
+            va="bottom",
+            fontsize=fontsize,
+            color=hat_color,
+        )
+
+    # Add empirical coverage text
+    ax.text(
+        0.95,
+        1.05,
+        f"Empirical coverage: {empirical_coverage*100:.4f}% vs 1-α=68%",
+        transform=ax.transAxes,
+        ha="right",
+        va="bottom",
+        fontsize=fontsize,
+        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+    )
+
+    ax.set_yticks([*range(1, len(mu_hat_values) + 1)] + [len(mu_hat_values) + 0.5])
+    ax.set_yticklabels([f"Exp {i}" for i in range(1, len(mu_hat_values) + 1)] + [""])
+    ax.set_xlabel("μ value")
+    ax.set_ylabel("Experiment")
+    ax.set_title(f"Confidence Intervals: {model_name}")
+    ax.grid(alpha=0.3, axis="x")
+    ax.invert_yaxis()
+
+    plt.tight_layout()
+    plt.savefig(
+        output_dir / f"test_CI_plots_{model_name}.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+
+
 def contourplot_data(
     X: np.ndarray, y: np.ndarray, output_dir: Path = Path("plots")
 ) -> None:
@@ -692,6 +791,27 @@ def main() -> None:
             mu_hat_upper_bounds = n_upper / np.array(gamma_true_list)
 
         print(f"\nModel: {model_name}\n")
+
+        empirical_coverage = np.mean(
+            [
+                mu_hat_lower < mu_true < mu_hat_upper
+                for mu_hat_lower, mu_hat_upper, mu_true in zip(
+                    mu_hat_lower_bounds,
+                    mu_hat_upper_bounds,
+                    mu_true_list,
+                )
+            ]
+        )
+        print(f"Empirical coverage: {empirical_coverage*100:.4f}%")
+        plot_confidence_intervals(
+            mu_hat_values,
+            mu_hat_lower_bounds,
+            mu_hat_upper_bounds,
+            mu_true_list,
+            model_name,
+            empirical_coverage,
+            output_dir=STATS_DIR,
+        )
         exp_idx = 1
         for mu_hat, mu_hat_lower, mu_hat_upper, mu_true in zip(
             mu_hat_values, mu_hat_lower_bounds, mu_hat_upper_bounds, mu_true_list
