@@ -110,21 +110,40 @@ def _get_events_count(
     return counts
 
 
-def _nonconformity_scores(
+def _random_perturbation_for_numerical_stability():
+    return np.random.normal(0, 1e-6)
+
+
+def _nonconformity_scores(pred, target):
+    return (pred - target) + _random_perturbation_for_numerical_stability()
+
+
+def compute_nonconformity_scores(
     models: Dict[str, object],
     scaler: StandardScaler,
     calib_data: Sequence[Tuple[np.ndarray, np.ndarray]],
+    calib_meta: Sequence[dict],
     threshold: float,
+    target: str = "mu_hat",  # can be "n_pred" or "mu_hat"
 ) -> Dict[str, List[int]]:
     scores: Dict[str, List[int]] = {name: [] for name in models}
-    for X_calib, y_calib in calib_data:
+    for (X_calib, y_calib), _meta in zip(calib_data, calib_meta):
         X_calib = scaler.transform(X_calib)
         n_obs = int(np.sum(y_calib))
+        mu_true = _meta["mu_true"]
+        gamma_true = _meta["gamma_true"]
         for name, model in models.items():
             y_pred_proba = model.predict_proba(X_calib)[:, 1]
             n_pred = int(np.sum(y_pred_proba > threshold))
-            # TODO: USE n_obs - n_pred instead for more intuitive CI computation!
-            scores[name].append(n_obs - n_pred)
+            if target == "mu_hat":
+                mu_hat = n_pred / gamma_true if gamma_true > 0 else 0.0
+                scores[name].append(
+                    mu_hat - mu_true + _random_perturbation_for_numerical_stability()
+                )
+            elif target == "n_pred":
+                scores[name].append(
+                    n_obs - n_pred + _random_perturbation_for_numerical_stability()
+                )
     return scores
 
 
@@ -132,19 +151,22 @@ def _compute_mu_hat(
     models: Dict[str, object],
     scaler: StandardScaler,
     calib_data: Sequence[Tuple[np.ndarray, np.ndarray]],
+    calib_meta: Sequence[dict],
     threshold: float,
 ) -> Tuple[Dict[str, List[float]], Dict[str, Dict[str, float]]]:
     mu_hat: Dict[str, List[float]] = {name: [] for name in models}
-    for X_calib, y_calib in calib_data:
+    for (X_calib, y_calib), meta in zip(calib_data, calib_meta):
         X_calib = scaler.transform(X_calib)
         # TODO: fix using gamma_true from metadata!
-        gamma_true = int(np.sum(y_calib))
+        gamma_true = meta["gamma_true"]
         if gamma_true == 0:
             continue
         for name, model in models.items():
             y_pred_proba = model.predict_proba(X_calib)[:, 1]
             n_pred = int(np.sum(y_pred_proba > threshold))
-            mu_hat[name].append(n_pred / gamma_true)
+            mu_hat[name].append(
+                n_pred / gamma_true + _random_perturbation_for_numerical_stability()
+            )
 
     # Compute statistics
     stats: Dict[str, Dict[str, float]] = {}
@@ -242,7 +264,9 @@ def plot_mu_hat_distribution(
 
 
 def plot_nonconformity_scores(
-    nonconf_scores: Dict[str, List[int]], output_dir: Path = Path("plots")
+    nonconf_scores: Dict[str, List[int]],
+    scores_label: str,
+    output_dir: Path = Path("plots"),
 ) -> None:
     """Plot nonconformity score distributions for each model and comparison."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -260,14 +284,14 @@ def plot_nonconformity_scores(
             ax.plot(xs, density(xs), "k-", linewidth=2, label="KDE")
 
         ax.set_title(f"Nonconformity Scores Distribution: {model_name}")
-        ax.set_xlabel("Nonconformity Score")
+        ax.set_xlabel(f"Nonconformity Score ({scores_label})")
         ax.set_ylabel("Density")
         ax.legend()
         ax.grid(alpha=0.3)
 
         plt.tight_layout()
         plt.savefig(
-            output_dir / f"scores_distribution_{model_name}.png",
+            output_dir / f"{scores_label}_scores_distribution_{model_name}.png",
             dpi=300,
             bbox_inches="tight",
         )
@@ -295,14 +319,14 @@ def plot_nonconformity_scores(
             axs[i].plot(xs, density(xs), "k-", linewidth=2, label="KDE")
 
         axs[i].set_title(f"{model_name}")
-        axs[i].set_xlabel("Nonconformity Score")
+        axs[i].set_xlabel(f"Nonconformity Score ({scores_label})")
         axs[i].set_ylabel("Density")
         axs[i].legend()
         axs[i].grid(alpha=0.3)
 
     plt.tight_layout()
     plt.savefig(
-        output_dir / "scores_distribution_comparison.png",
+        output_dir / f"{scores_label}_scores_distribution_comparison.png",
         dpi=300,
         bbox_inches="tight",
     )
@@ -521,7 +545,10 @@ def main() -> None:
     val_blocks: List[np.ndarray] = []
     train_labels: List[np.ndarray] = []
     val_labels: List[np.ndarray] = []
+    train_meta: List[dict] = []
+    val_meta: List[dict] = []
     calib_data: List[Tuple[np.ndarray, np.ndarray]] = []
+    calib_meta: List[dict] = []
     for file_path in train_files:
         X, y, _meta = load_pseudo_experiment(file_path)
         (
@@ -536,7 +563,10 @@ def main() -> None:
         val_blocks.append(X_val)
         train_labels.append(y_train)
         val_labels.append(y_val)
+        train_meta.append(_meta)
+        val_meta.append(_meta)
         calib_data.append((X_calib, y_calib))
+        calib_meta.append(_meta)
 
     X_train = np.vstack(train_blocks)
     X_val = np.vstack(val_blocks)
@@ -585,23 +615,52 @@ def main() -> None:
         f"Average calibration sample size: {int(np.array([_[0].shape[0] for _ in calib_data]).mean())} observations"
     )
 
-    nonconf_scores = _nonconformity_scores(models, scaler, calib_data, cfg.threshold)
-    for model_name, values in nonconf_scores.items():
-        mean_score = float(np.mean(values)) if values else float("nan")
-        print(f"{model_name} nonconformity mean: {mean_score:.4f}")
+    nonconf_scores_mu = compute_nonconformity_scores(
+        models, scaler, calib_data, calib_meta, cfg.threshold, target="mu_hat"
+    )
+    nonconf_scores_n_pred = compute_nonconformity_scores(
+        models, scaler, calib_data, calib_meta, cfg.threshold, target="n_pred"
+    )
+    for model_name, values in nonconf_scores_mu.items():
+        mean_score = np.mean(values) if values else float("nan")
+        std_score = np.std(values) if values else float("nan")
+        print(
+            f"{model_name} nonconformity mu_hat stats: {mean_score:.4f} ± {std_score:.4f}"
+        )
+    for model_name, values in nonconf_scores_n_pred.items():
+        mean_score = np.mean(values) if values else float("nan")
+        std_score = np.std(values) if values else float("nan")
+        print(
+            f"{model_name} nonconformity (n_pred) stats: {mean_score:.4f} ± {std_score:.4f}"
+        )
 
-    plot_nonconformity_scores(nonconf_scores, output_dir=PLOTS_DIR)
+    plot_nonconformity_scores(
+        nonconf_scores_mu, scores_label="mu_hat", output_dir=PLOTS_DIR
+    )
+    plot_nonconformity_scores(
+        nonconf_scores_n_pred, scores_label="n_pred", output_dir=PLOTS_DIR
+    )
+
     print("\nComputing mu_hat...")
-    mu_hat, stats = _compute_mu_hat(models, scaler, calib_data, cfg.threshold)
+    mu_hat, stats = _compute_mu_hat(
+        models, scaler, calib_data, calib_meta, cfg.threshold
+    )
+    np.savez(
+        STATS_DIR / "mu_hat_calib_distribution.npz",
+        **{model_name: np.array(scores) for model_name, scores in mu_hat.items()},
+    )
     np.savez(
         STATS_DIR / "mu_hat_nonconf_scores.npz",
-        **{model_name: np.array(scores) for model_name, scores in mu_hat.items()},
+        **{
+            model_name: np.array(scores)
+            for model_name, scores in nonconf_scores_mu.items()
+        },
     )
     np.savez(
         STATS_DIR / "n_pred_nonconf_scores.npz",
         **{
             model_name: np.array(scores)
-            for model_name, scores in nonconf_scores.items()
+            for model_name, scores in nonconf_scores_n_pred.items()
         },
     )
 
@@ -634,17 +693,29 @@ def main() -> None:
     print("\nComputing confidence intervals for test set...")
 
     # Load nonconformity scores for computing intervals
-    # nonconf_scores_file = STATS_DIR / "mu_hat_nonconf_scores.npz"
-    nonconf_scores_file = STATS_DIR / "n_pred_nonconf_scores.npz"
+    target = "mu_hat"
+    if target == "mu_hat":
+        print("Using mu_hat nonconformity scores for CI computation.")
+        nonconf_scores_file = STATS_DIR / "mu_hat_nonconf_scores.npz"
+    elif target == "n_pred":
+        print("Using n_pred nonconformity scores for CI computation.")
+        nonconf_scores_file = STATS_DIR / "n_pred_nonconf_scores.npz"
+    else:
+        raise ValueError(f"Unknown target for nonconformity scores: {target}")
 
     for i, (model_name, mu_hat_values) in enumerate(mu_hat_test.items()):
-        n_preds = mu_hat_values * np.array(gamma_true_list)
-        n_lower, n_upper = compute_confidence_interval(
-            n_preds, nonconf_scores_file, model_name
-        )
+        if target == "mu_hat":
+            mu_hat_lower_bounds, mu_hat_upper_bounds = compute_confidence_interval(
+                np.array(mu_hat_values), nonconf_scores_file, model_name
+            )
+        elif target == "n_pred":
+            n_preds = mu_hat_values * np.array(gamma_true_list)
+            n_lower, n_upper = compute_confidence_interval(
+                n_preds, nonconf_scores_file, model_name
+            )
+            mu_hat_lower_bounds = n_lower / np.array(gamma_true_list)
+            mu_hat_upper_bounds = n_upper / np.array(gamma_true_list)
 
-        mu_hat_lower_bounds = n_lower / np.array(gamma_true_list)
-        mu_hat_upper_bounds = n_upper / np.array(gamma_true_list)
         print(f"\nModel: {model_name}\n")
         exp_idx = 1
         for mu_hat, mu_hat_lower, mu_hat_upper, mu_true in zip(
