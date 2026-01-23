@@ -34,6 +34,7 @@ class Settings:
     threshold: float = 0.5
     valid_size: float = 0.2
     calib_size: float = 0.3
+    nonconf_target: str = "mu_hat"  # can be "n_pred" or "mu_hat"
 
 
 def _experiment_prefix(path: Path) -> str:
@@ -613,31 +614,20 @@ def main() -> None:
     print(
         f"Average calibration sample size: {int(np.array([_[0].shape[0] for _ in calib_data]).mean())} observations"
     )
+    print(f"\t...using {cfg.nonconf_target} as target for nonconformity scores")
+    nonconf_scores = compute_nonconformity_scores(
+        models, scaler, calib_data, calib_meta, cfg.threshold, target=cfg.nonconf_target
+    )
 
-    nonconf_scores_mu = compute_nonconformity_scores(
-        models, scaler, calib_data, calib_meta, cfg.threshold, target="mu_hat"
-    )
-    nonconf_scores_n_pred = compute_nonconformity_scores(
-        models, scaler, calib_data, calib_meta, cfg.threshold, target="n_pred"
-    )
-    for model_name, values in nonconf_scores_mu.items():
+    for model_name, values in nonconf_scores.items():
         mean_score = np.mean(values) if values else float("nan")
         std_score = np.std(values) if values else float("nan")
         print(
             f"{model_name} nonconformity mu_hat stats: {mean_score:.4f} ± {std_score:.4f}"
         )
-    for model_name, values in nonconf_scores_n_pred.items():
-        mean_score = np.mean(values) if values else float("nan")
-        std_score = np.std(values) if values else float("nan")
-        print(
-            f"{model_name} nonconformity (n_pred) stats: {mean_score:.4f} ± {std_score:.4f}"
-        )
 
     plot_nonconformity_scores(
-        nonconf_scores_mu, scores_label="mu_hat", output_dir=PLOTS_DIR
-    )
-    plot_nonconformity_scores(
-        nonconf_scores_n_pred, scores_label="n_pred", output_dir=PLOTS_DIR
+        nonconf_scores, scores_label=cfg.nonconf_target, output_dir=PLOTS_DIR
     )
 
     print("\nComputing mu_hat...")
@@ -649,17 +639,10 @@ def main() -> None:
         **{model_name: np.array(scores) for model_name, scores in mu_hat.items()},
     )
     np.savez(
-        STATS_DIR / "mu_hat_nonconf_scores.npz",
+        STATS_DIR / f"{cfg.nonconf_target}_nonconf_scores.npz",
         **{
             model_name: np.array(scores)
-            for model_name, scores in nonconf_scores_mu.items()
-        },
-    )
-    np.savez(
-        STATS_DIR / "n_pred_nonconf_scores.npz",
-        **{
-            model_name: np.array(scores)
-            for model_name, scores in nonconf_scores_n_pred.items()
+            for model_name, scores in nonconf_scores.items()
         },
     )
 
@@ -676,7 +659,7 @@ def main() -> None:
     for file_path in _test_files:
         X_test, y_test, meta = load_pseudo_experiment(file_path)
         test_data.append((X_test, y_test, meta))
-
+    # TODO: Add reporting of test set classification performance statistics as well.
     mu_hat_test, mu_true_list, gamma_true_list = _inference_on_test_set(
         models, scaler, test_data, cfg.threshold
     )
@@ -692,22 +675,15 @@ def main() -> None:
     print("\nComputing confidence intervals for test set...")
 
     # Load nonconformity scores for computing intervals
-    target = "mu_hat"
-    if target == "mu_hat":
-        print("Using mu_hat nonconformity scores for CI computation.")
-        nonconf_scores_file = STATS_DIR / "mu_hat_nonconf_scores.npz"
-    elif target == "n_pred":
-        print("Using n_pred nonconformity scores for CI computation.")
-        nonconf_scores_file = STATS_DIR / "n_pred_nonconf_scores.npz"
-    else:
-        raise ValueError(f"Unknown target for nonconformity scores: {target}")
+    print(f"\t...using {cfg.nonconf_target} nonconformity scores for CI computation.")
+    nonconf_scores_file = STATS_DIR / f"{cfg.nonconf_target}_nonconf_scores.npz"
 
     for i, (model_name, mu_hat_values) in enumerate(mu_hat_test.items()):
-        if target == "mu_hat":
+        if cfg.nonconf_target == "mu_hat":
             mu_hat_lower_bounds, mu_hat_upper_bounds = compute_confidence_interval(
                 np.array(mu_hat_values), nonconf_scores_file, model_name
             )
-        elif target == "n_pred":
+        elif cfg.nonconf_target == "n_pred":
             n_preds = mu_hat_values * np.array(gamma_true_list)
             n_lower, n_upper = compute_confidence_interval(
                 n_preds, nonconf_scores_file, model_name
