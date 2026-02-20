@@ -82,11 +82,11 @@ def evaluate_models(
 
 
 def get_events_count(
-    models: Dict[str, object], X_val: np.ndarray, threshold: float
+    models: Dict[str, object], X: np.ndarray, threshold: float
 ) -> Dict[str, int]:
     counts: Dict[str, int] = {}
     for name, model in models.items():
-        y_pred_proba = model.predict_proba(X_val)[:, 1]
+        y_pred_proba = model.predict_proba(X)[:, 1]
         counts[name] = int(np.sum(y_pred_proba > threshold))
     return counts
 
@@ -96,7 +96,7 @@ def _random_perturbation_for_numerical_stability() -> float:
 
 
 def _nonconformity_scores(pred, target) -> float:
-    return (target - pred) + _random_perturbation_for_numerical_stability()
+    return target - pred + _random_perturbation_for_numerical_stability()
 
 
 def _get_proportionate_gamma(meta: dict, y: int) -> float:
@@ -223,7 +223,7 @@ def inference_on_test_set(
 
 
 def compute_confidence_interval(
-    n_pred,
+    y_pred,
     nonconf_scores_file: Path,
     model_name: str,
 ) -> Tuple[float, float]:
@@ -243,10 +243,11 @@ def compute_confidence_interval(
         raise KeyError(f"Model '{model_name}' not found in {nonconf_scores_file}")
 
     scores = data[model_name]
-    q16 = float(np.percentile(scores, 16))
-    q84 = float(np.percentile(scores, 84))
 
-    lower_bound = n_pred + q16
-    upper_bound = n_pred + q84
+    q_low = float(np.percentile(scores, 16))
+    q_high = float(np.percentile(scores, 84))
+
+    lower_bound = y_pred + q_low
+    upper_bound = y_pred + q_high
 
     return lower_bound, upper_bound

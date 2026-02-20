@@ -30,7 +30,7 @@ from conformal_predictions.training import (
 )
 
 # TODO: Refactor to support yaml config loading. It should take Settings attributes + OUTPUT_DIRNAME. Do not change parts/names that are not necessary for this.
-OUTPUT_DIRNAME = "test_refactoring"
+OUTPUT_DIRNAME = "test_toy-scale-easy-1000-test-2100-calib"
 PLOTS_DIR = Path("results") / OUTPUT_DIRNAME / "plots"
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -42,7 +42,7 @@ STATS_DIR.mkdir(parents=True, exist_ok=True)
 
 @dataclass(frozen=True)
 class Settings:
-    data_dir: Path = Path("data") / "toy_scale"
+    data_dir: Path = Path("data") / "toy_scale_easy"
     mu: float = 1.0
     seed: int = 18
     test_prefixes: Tuple[str, ...] = ("7e39", "6fcb")
@@ -51,7 +51,7 @@ class Settings:
     calib_size: float = 0.5
     nonconf_target: str = "mu_hat"  # can be "n_pred" or "mu_hat"
     n_test_experiments: int = (
-        2000  # number of test pseudo-experiments to select if no prefixes match
+        1000  # number of test pseudo-experiments to select if no prefixes match
     )
 
 
