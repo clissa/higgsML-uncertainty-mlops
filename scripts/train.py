@@ -23,10 +23,10 @@ from conformal_predictions.training import (
     compute_confidence_interval,
     compute_mu_hat,
     compute_nonconformity_scores,
+    evaluate_models,
     get_events_count,
     inference_on_test_set,
     list_split_files,
-    score_models,
 )
 
 # TODO: Refactor to support yaml config loading. It should take Settings attributes + OUTPUT_DIRNAME. Do not change parts/names that are not necessary for this.
@@ -151,9 +151,15 @@ def main() -> None:
     _fit_models(models, X_train_scaled, y_train)
 
     # print classification performance on validation set
-    scores = score_models(models, X_val_scaled, y_val)
-    for model_name, score in scores.items():
-        print(f"{model_name} validation accuracy: {score:.4f}")
+    performance_metrics = evaluate_models(models, X_val_scaled, y_val)
+    for model_name, metrics in performance_metrics.items():
+        print(f"\n\n{model_name} validation metrics:")
+        print(
+            f"\tAccuracy: {metrics['accuracy']:.4f}"
+            f"\tPrecision: {metrics['precision']:.4f}"
+            f"\tRecall: {metrics['recall']:.4f}"
+            f"\tF1: {metrics['f1']:.4f}"
+        )
 
     counts = get_events_count(models, X_val_scaled, cfg.threshold)
     for model_name, count in counts.items():

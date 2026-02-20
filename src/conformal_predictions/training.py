@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 from scipy.stats import gaussian_kde
+from sklearn.metrics import f1_score, precision_score, recall_score
 from sklearn.preprocessing import StandardScaler
 from tqdm.auto import tqdm
 
@@ -65,10 +66,19 @@ def list_split_files(
     return train_files, val_files, calib_files, test_files
 
 
-def score_models(
-    models: Dict[str, object], X_val: np.ndarray, y_val: np.ndarray
-) -> Dict[str, float]:
-    return {name: float(model.score(X_val, y_val)) for name, model in models.items()}
+def evaluate_models(
+    models: Dict[str, object], X: np.ndarray, y: np.ndarray
+) -> Dict[str, Dict[str, float]]:
+    results: Dict[str, Dict[str, float]] = {}
+    for name, model in models.items():
+        y_pred = model.predict(X)
+        results[name] = {
+            "accuracy": float(model.score(X, y)),
+            "precision": float(precision_score(y, y_pred, zero_division=0)),
+            "recall": float(recall_score(y, y_pred, zero_division=0)),
+            "f1": float(f1_score(y, y_pred, zero_division=0)),
+        }
+    return results
 
 
 def get_events_count(
