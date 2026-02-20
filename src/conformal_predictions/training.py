@@ -148,9 +148,7 @@ def compute_mu_hat(
         for name, model in models.items():
             y_pred_proba = model.predict_proba(X_calib)[:, 1]
             n_pred = int(np.sum(y_pred_proba > threshold))
-            mu_hat[name].append(
-                n_pred / gamma_true + _random_perturbation_for_numerical_stability()
-            )
+            mu_hat[name].append(n_pred / gamma_true)
 
     stats: Dict[str, Dict[str, float]] = {}
     for name, values in mu_hat.items():
@@ -202,7 +200,7 @@ def inference_on_test_set(
     for X_test, y_test, meta_dict in tqdm(test_data, desc="Inference on test set"):
         X_test_scaled = scaler.transform(X_test)
 
-        gamma_true = meta_dict["gamma_true"]
+        gamma_true = _get_proportionate_gamma(meta_dict, y_test)
         mu_true = meta_dict["mu_true"]
         mu_true_list.append(float(mu_true))
         gamma_true_list.append(int(gamma_true))
