@@ -15,7 +15,7 @@ from tqdm.auto import tqdm
 from conformal_predictions.data.toy import load_pseudo_experiment
 from conformal_predictions.data_viz import (
     contourplot_data,
-    plot_confidence_intervals,
+    # plot_confidence_intervals,
     plot_mu_hat_distribution,
     plot_nonconformity_scores,
 )
@@ -264,6 +264,15 @@ def main() -> None:
             ]
         )
         print(f"Empirical coverage: {empirical_coverage*100:.2f}%")
+        # plot_confidence_intervals(
+        #     mu_hat_values,
+        #     mu_hat_lower_bounds,
+        #     mu_hat_upper_bounds,
+        #     mu_true_list,
+        #     model_name,
+        #     empirical_coverage,
+        #     output_dir=STATS_DIR,
+        # )
         for exp_idx, (mu_hat, mu_hat_lower, mu_hat_upper, mu_true) in enumerate(
             zip(mu_hat_values, mu_hat_lower_bounds, mu_hat_upper_bounds, mu_true_list)
         ):
