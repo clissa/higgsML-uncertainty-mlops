@@ -220,7 +220,7 @@ def main() -> None:
         X_test, y_test, meta = load_pseudo_experiment(file_path)
         test_data.append((X_test, y_test, meta))
     # TODO: Add reporting of test set classification performance statistics as well.
-    mu_hat_test, mu_true_list, gamma_true_list = inference_on_test_set(
+    mu_hat_test, mu_true_list, gamma_true_list, test_metrics = inference_on_test_set(
         models, scaler, test_data, cfg.threshold
     )
 
@@ -238,7 +238,7 @@ def main() -> None:
     print(f"\t...using {cfg.nonconf_target} nonconformity scores for CI computation.")
     nonconf_scores_file = STATS_DIR / f"{cfg.nonconf_target}_nonconf_scores.npz"
 
-    for i, (model_name, mu_hat_values) in enumerate(mu_hat_test.items()):
+    for model_name, mu_hat_values in mu_hat_test.items():
         if cfg.nonconf_target == "mu_hat":
             mu_hat_lower_bounds, mu_hat_upper_bounds = compute_confidence_interval(
                 np.array(mu_hat_values), nonconf_scores_file, model_name
@@ -264,23 +264,13 @@ def main() -> None:
             ]
         )
         print(f"Empirical coverage: {empirical_coverage*100:.2f}%")
-        plot_confidence_intervals(
-            mu_hat_values,
-            mu_hat_lower_bounds,
-            mu_hat_upper_bounds,
-            mu_true_list,
-            model_name,
-            empirical_coverage,
-            output_dir=STATS_DIR,
-        )
-        exp_idx = 0
-        for mu_hat, mu_hat_lower, mu_hat_upper, mu_true in zip(
-            mu_hat_values, mu_hat_lower_bounds, mu_hat_upper_bounds, mu_true_list
+        for exp_idx, (mu_hat, mu_hat_lower, mu_hat_upper, mu_true) in enumerate(
+            zip(mu_hat_values, mu_hat_lower_bounds, mu_hat_upper_bounds, mu_true_list)
         ):
-            if exp_idx % 10 != 0:
-                exp_idx += 1
+            if exp_idx % 50 != 0:
+                # exp_idx += 1
                 continue
-            print("printing every 10th experiment:")
+            print("printing every 50th experiment:")
             # Determine color based on whether CI contains mu_true
             color = "\033[92m" if mu_hat_lower < mu_true < mu_hat_upper else "\033[91m"
             reset = "\033[0m"
@@ -290,7 +280,7 @@ def main() -> None:
                 f"CI: [{mu_hat_lower:.3f}, {mu_hat_upper:.3f}] "
                 f"μ_true: {mu_true:.3f}{reset}"
             )
-            exp_idx += 1
+            print(test_metrics[model_name][exp_idx])
 
 
 if __name__ == "__main__":

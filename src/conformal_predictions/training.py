@@ -193,6 +193,9 @@ def inference_on_test_set(
         gamma_true_list: List of gamma_true values (one per experiment)
     """
     mu_hat_test: Dict[str, List[float]] = {name: [] for name in models}
+    performance_metrics: Dict[str, List[Dict[str, float]]] = {
+        name: [] for name in models
+    }
     mu_true_list: List[float] = []
     gamma_true_list: List[int] = []
 
@@ -209,7 +212,20 @@ def inference_on_test_set(
 
         for name, model in models.items():
             y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
-            n_pred = int(np.sum(y_pred_proba > threshold))
+            y_pred = y_pred_proba > threshold
+
+            # classification metrics
+            _metrics = {
+                "accuracy": float(model.score(X_test_scaled, y_test)),
+                "precision": float(precision_score(y_test, y_pred, zero_division=0)),
+                "recall": float(recall_score(y_test, y_pred, zero_division=0)),
+                "f1": float(f1_score(y_test, y_pred, zero_division=0)),
+            }
+            performance_metrics[name].append(_metrics)
+
+            # counting metrics
+            n_pred = int(np.sum(y_pred))
+
             mu_hat = n_pred / gamma_true
             mu_hat_test[name].append(mu_hat)
 
@@ -219,7 +235,8 @@ def inference_on_test_set(
                 print(
                     f"\tExperiment: mu_true={mu_true:.4f}, gamma_true={gamma_true}, n_obs={n_obs}, n_pred={n_pred}, mu_hat={mu_hat:.4f}"
                 )
-    return mu_hat_test, mu_true_list, gamma_true_list
+
+    return mu_hat_test, mu_true_list, gamma_true_list, performance_metrics
 
 
 def compute_confidence_interval(
