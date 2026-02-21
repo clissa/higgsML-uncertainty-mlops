@@ -3,9 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import gaussian_kde
+
+mpl.rcParams["font.size"] = 14
 
 
 def plot_mu_hat_distribution(
