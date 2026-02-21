@@ -15,7 +15,7 @@ from tqdm.auto import tqdm
 from conformal_predictions.data.toy import load_pseudo_experiment
 from conformal_predictions.data_viz import (
     contourplot_data,
-    # plot_confidence_intervals,
+    plot_confidence_intervals,
     plot_mu_hat_distribution,
     plot_nonconformity_scores,
 )
@@ -219,17 +219,10 @@ def main() -> None:
     for file_path in test_files:
         X_test, y_test, meta = load_pseudo_experiment(file_path)
         test_data.append((X_test, y_test, meta))
-    # TODO: Add reporting of test set classification performance statistics as well.
+
     mu_hat_test, mu_true_list, gamma_true_list, test_metrics = inference_on_test_set(
         models, scaler, test_data, cfg.threshold
     )
-
-    # print("\nTest set mu_hat estimates:")
-    # for model_name, values in mu_hat_test.items():
-    #     print(f"  {model_name}: values={values}")
-    #     print(f"  {model_name}: mean={np.mean(values):.4f}, std={np.std(values):.4f}")
-    # print(f"  mu_true values: {mu_true_list}")
-    # print(f"  gamma_true values: {gamma_true_list}")
 
     # Compute confidence intervals for test set predictions
     print("\nComputing confidence intervals for test set...")
@@ -264,15 +257,15 @@ def main() -> None:
             ]
         )
         print(f"Empirical coverage: {empirical_coverage*100:.2f}%")
-        # plot_confidence_intervals(
-        #     mu_hat_values,
-        #     mu_hat_lower_bounds,
-        #     mu_hat_upper_bounds,
-        #     mu_true_list,
-        #     model_name,
-        #     empirical_coverage,
-        #     output_dir=STATS_DIR,
-        # )
+        plot_confidence_intervals(
+            mu_hat_values,
+            mu_hat_lower_bounds,
+            mu_hat_upper_bounds,
+            mu_true_list,
+            model_name,
+            empirical_coverage,
+            output_dir=STATS_DIR,
+        )
         for exp_idx, (mu_hat, mu_hat_lower, mu_hat_upper, mu_true) in enumerate(
             zip(mu_hat_values, mu_hat_lower_bounds, mu_hat_upper_bounds, mu_true_list)
         ):
