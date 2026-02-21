@@ -155,9 +155,8 @@ def plot_nonconformity_scores(
     plt.close()
 
 
-# TODO: understand and fix the issue with replicated figures when running multiple times
 def plot_CI(
-    exp_idx: int,
+    y_coord: float,
     mu_hat: float,
     mu_hat_lower: float,
     mu_hat_upper: float,
@@ -166,48 +165,57 @@ def plot_CI(
 ) -> plt.Axes:
     """Plot a single confidence interval on the given Axes."""
     fontsize = 11
-    hat_color = "green" if mu_hat_lower < mu_true < mu_hat_upper else "red"
-    line_color = "blue"
 
-    ax.hlines(exp_idx, mu_hat_lower, mu_hat_upper, colors=line_color, linewidth=2)
+    TRUE_COLOR = "#4E79A7"  # desaturated blue
+    CORRECT_COLOR = "#59A14F"  # green (Tableau safe)
+    WRONG_COLOR = "#E15759"  # muted red (Tableau safe)
 
+    pred_color = CORRECT_COLOR if mu_hat_lower < mu_true < mu_hat_upper else WRONG_COLOR
+    pred_marker = "o" if mu_hat_lower < mu_true < mu_hat_upper else "X"
+
+    # draw CI
+    ax.hlines(y_coord, mu_hat_lower, mu_hat_upper, colors=pred_color, linewidth=2)
+
+    # mu_hat
     ax.plot(
         mu_hat,
-        exp_idx,
-        "o",
-        color=hat_color,
-        markersize=12,
-        label=f"μ̂ (Exp {exp_idx})",
+        y_coord,
+        pred_marker,
+        color=pred_color,
+        markersize=10,
     )
-
-    ax.plot(mu_true, exp_idx, "^", color=line_color, markersize=12)
-
     ax.text(
         mu_hat,
-        exp_idx + 0.25,
-        f"μ̂={mu_hat:.2f}",
+        y_coord + 0.5,
+        f"$\hat{{\mu}}={mu_hat:.2f}$",
         ha="center",
-        va="bottom",
+        va="center",
         fontsize=fontsize,
-        color=hat_color,
+        color=pred_color,
     )
+
+    ax.plot(mu_hat_lower, y_coord, "|", color=pred_color, linewidth=5, markersize=12)
+    ax.plot(mu_hat_upper, y_coord, "|", color=pred_color, linewidth=5, markersize=12)
+    ax.text(
+        mu_hat_lower,
+        y_coord + 0.5,
+        f"CI: [{mu_hat_lower:.2f}, {mu_hat_upper:.2f}]",
+        ha="left",
+        va="center",
+        fontsize=fontsize,
+        color=pred_color,
+    )
+
+    # draw mu_true marker
+    ax.plot(mu_true, y_coord, "*", color=TRUE_COLOR, markersize=12)
     ax.text(
         mu_true,
-        exp_idx + 0.25,
-        f"μ={mu_true:.2f}",
+        y_coord - 0.5,
+        f"$\mu={mu_true:.2f}$",
         ha="center",
         va="top",
         fontsize=fontsize,
-        color=line_color,
-    )
-    ax.text(
-        mu_hat_lower,
-        exp_idx + 0.25,
-        f"\nCI: [{mu_hat_lower:.2f}, {mu_hat_upper:.2f}]",
-        ha="left",
-        va="bottom",
-        fontsize=fontsize,
-        color=hat_color,
+        color=TRUE_COLOR,
     )
     return ax
 
