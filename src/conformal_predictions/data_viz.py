@@ -220,6 +220,10 @@ def plot_CI(
     return ax
 
 
+LINE_SPACING = 3
+PAD = 1  # top/bottom padding in "spacing units"
+
+
 def plot_confidence_intervals(
     mu_hat_values: List[float],
     mu_hat_lower_bounds: List[float],
@@ -233,18 +237,31 @@ def plot_confidence_intervals(
     output_dir.mkdir(parents=True, exist_ok=True)
     _experiment_idxs = range(len(mu_hat_values))
 
-    for plot_id in range(1, 6):
+    n_plots = 5
+    n_CI_per_plot = min(10, len(mu_hat_values))
+    CI_y_coords = LINE_SPACING * np.arange(n_CI_per_plot)
+    for plot_id in range(1, n_plots + 1):
         if len(_experiment_idxs) == 0:
             break
-        _experiments_to_plot = np.sort(
-            np.random.choice(
-                _experiment_idxs, size=min(5, len(_experiment_idxs)), replace=False
+
+        # draw randomly from the remaining experiments to plot
+        if len(_experiment_idxs) > n_CI_per_plot:
+            _experiments_to_plot = np.random.choice(
+                _experiment_idxs, size=n_CI_per_plot, replace=False
             )
-        )
+        # take all remaining experiments if less than n_plots
+        else:
+            _experiments_to_plot = _experiment_idxs
+        _experiments_to_plot = np.sort(_experiments_to_plot)
+
+        # discard plotted experiments
         _experiment_idxs = [
-            _ for _ in _experiment_idxs if _ not in _experiments_to_plot
+            id_to_keep
+            for id_to_keep in _experiment_idxs
+            if id_to_keep not in _experiments_to_plot
         ]
 
+        # prepare data for plotting
         mu_hat_values_to_plot = np.array(mu_hat_values)[_experiments_to_plot].tolist()
         mu_true_list_to_plot = np.array(mu_true_list)[_experiments_to_plot].tolist()
         mu_hat_lower_bounds_to_plot = np.array(mu_hat_lower_bounds)[
@@ -257,40 +274,43 @@ def plot_confidence_intervals(
             _experiments_to_plot
         ].tolist()
 
-        fig, ax = plt.subplots(figsize=(12, 6))
-        for exp_idx, mu_hat, mu_hat_lower, mu_hat_upper, mu_true in zip(
-            _experiments_to_plot,
+        # create plot with proper spacing and loop through CIs
+        fig, ax = plt.subplots(figsize=(12, n_CI_per_plot * LINE_SPACING / 2 + PAD))
+        for CI_y, mu_hat, mu_hat_lower, mu_hat_upper, mu_true in zip(
+            CI_y_coords,
             mu_hat_values_to_plot,
             mu_hat_lower_bounds_to_plot,
             mu_hat_upper_bounds_to_plot,
             mu_true_list_to_plot,
         ):
-            ax = plot_CI(exp_idx, mu_hat, mu_hat_lower, mu_hat_upper, mu_true, ax)
+            ax = plot_CI(CI_y, mu_hat, mu_hat_lower, mu_hat_upper, mu_true, ax)
 
+        # TODO: enhance to support custom confidence level
+        # add legend with empirical coverage and nominal confidence level
+        coverage_legend = f"""Empirical coverage: {empirical_coverage*100:.3f}%\nConfidence level(1-α): 68%"""
         ax.text(
             0.95,
-            1.05,
-            f"Empirical coverage: {empirical_coverage*100:.4f}% vs 1-α=68%",
+            0.99,
+            coverage_legend,
             transform=ax.transAxes,
             ha="right",
-            va="bottom",
+            va="top",
             fontsize=12,
             bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
         )
 
-        ax.set_yticks([*range(1, len(mu_hat_values) + 1)] + [len(mu_hat_values) + 0.5])
-        ax.set_yticklabels(
-            [f"Exp {i}" for i in range(1, len(mu_hat_values) + 1)] + [""]
-        )
-        ax.set_xlabel("μ value")
-        ax.set_ylabel("Experiment")
+        ax.set_yticks(CI_y_coords)
+        ax.set_yticklabels([f"{exp_id}" for exp_id in _experiments_to_plot])
+
+        ax.set_xlabel("$\mu$ value")
+        ax.set_ylabel("Experiment ID")
         ax.set_title(f"Confidence Intervals: {model_name}")
         ax.grid(alpha=0.3, axis="x")
-        ax.invert_yaxis()
+        ax.set_ylim(-PAD * LINE_SPACING, (n_CI_per_plot - 1 + PAD) * LINE_SPACING)
 
         plt.tight_layout()
         plt.savefig(
-            output_dir / f"test_CI_plots{plot_id}_{model_name}.png",
+            output_dir / f"test_CI_plots-{plot_id}_{model_name}.png",
             dpi=300,
             bbox_inches="tight",
         )
