@@ -8,7 +8,7 @@
         "editor.wordWrap": "wordWrapColumn",
         "editor.wordWrapColumn": 88,
         "editor.codeActionsOnSave": {
-            "source.fixAll.ruff": true
+            "source.fixAll.ruff": "explicit"
         }
     }
 }
