@@ -99,8 +99,8 @@ def _nonconformity_scores(pred, target) -> float:
     return target - pred + _random_perturbation_for_numerical_stability()
 
 
-def _get_proportionate_gamma(meta: dict, y: int) -> float:
-    return meta["gamma_true"] / meta["nu_expected"] * len(y)
+def _get_proportionate_gamma(meta: dict) -> float:
+    return meta["gamma_true"] / meta["nu_expected"] * meta["n_total"]
 
 
 def compute_nonconformity_scores(
@@ -120,7 +120,7 @@ def compute_nonconformity_scores(
         X_calib = scaler.transform(X_calib)
         n_obs = int(np.sum(y_calib))
         mu_true = _meta["mu_true"]
-        gamma_true = _get_proportionate_gamma(_meta, y_calib)
+        gamma_true = _get_proportionate_gamma(_meta)
         for name, model in models.items():
             y_pred_proba = model.predict_proba(X_calib)[:, 1]
             n_pred = int(np.sum(y_pred_proba > threshold))
@@ -142,7 +142,7 @@ def compute_mu_hat(
     mu_hat: Dict[str, List[float]] = {name: [] for name in models}
     for (X_calib, y_calib), meta in zip(calib_data, calib_meta):
         X_calib = scaler.transform(X_calib)
-        gamma_true = _get_proportionate_gamma(meta, y_calib)
+        gamma_true = _get_proportionate_gamma(meta)
         if gamma_true == 0:
             continue
         for name, model in models.items():
@@ -200,7 +200,7 @@ def inference_on_test_set(
     for X_test, y_test, meta_dict in tqdm(test_data, desc="Inference on test set"):
         X_test_scaled = scaler.transform(X_test)
 
-        gamma_true = _get_proportionate_gamma(meta_dict, y_test)
+        gamma_true = _get_proportionate_gamma(meta_dict)
         mu_true = meta_dict["mu_true"]
         mu_true_list.append(float(mu_true))
         gamma_true_list.append(int(gamma_true))
@@ -246,7 +246,7 @@ def compute_confidence_interval(
     Compute confidence interval from calibration nonconformity scores.
 
     Args:
-        n_pred: Number of predicted signal events
+        y_pred: Predicted value for which to compute the confidence interval
         nonconf_scores_file: Path to .npz file containing nonconformity scores
         model_name: Name of the model to extract scores for
 
