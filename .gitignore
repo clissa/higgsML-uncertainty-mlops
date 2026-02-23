@@ -16,7 +16,8 @@ outputs/
 # Data
 data/raw/
 data/processed/
-data/toy* 
+data/toy*
+data/HiggsML
 
 # Jupyter
 .ipynb_checkpoints/
