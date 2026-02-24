@@ -7,6 +7,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import gaussian_kde
+from sklearn.decomposition import PCA
 
 mpl.rcParams["font.size"] = 14
 
@@ -327,8 +328,13 @@ def contourplot_data(
     Background is drawn first, then signal.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
+    feature_names = [f"Feature {i}" for i in range(X.shape[1])]
     if X.shape[1] < 2:
         return
+    elif X.shape[1] > 2:
+        X = PCA(n_components=2, random_state=0).fit_transform(X)
+        feature_names = ["PCA 1", "PCA 2"]
+
     signal = X[y == 1][:, :2]
     background = X[y == 0][:, :2]
     if len(signal) == 0 or len(background) == 0:
@@ -397,8 +403,8 @@ def contourplot_data(
         label="Signal",
         rasterized=True,
     )
-    ax.set_xlabel("Feature 0")
-    ax.set_ylabel("Feature 1")
+    ax.set_xlabel(feature_names[0])
+    ax.set_ylabel(feature_names[1])
     ax.set_title("Signal vs Background Density")
     ax.legend(frameon=False)
     ax.grid(alpha=0.25)
