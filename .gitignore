@@ -12,6 +12,7 @@ venv*/
 # Results and outputs
 results/
 outputs/
+logs/
 
 # Data
 data/raw/
