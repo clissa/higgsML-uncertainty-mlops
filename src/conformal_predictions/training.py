@@ -107,8 +107,33 @@ def _nonconformity_scores(pred, target, how: str = "diff") -> float:
     return score + _random_perturbation_for_numerical_stability()
 
 
-def _get_proportionate_gamma(meta: dict) -> float:
+def _get_proportionate_gamma_true(meta: dict) -> float:
     return meta["gamma_true"] / meta["nu_expected"] * meta["n_total"]
+
+
+def _get_expected_signal(gamma_true: float, eps_signal: float) -> float:
+    return gamma_true * eps_signal
+
+
+def _get_proportionate_beta_true(meta: dict) -> float:
+    return meta["beta_true"] / meta["nu_expected"] * meta["n_total"]
+
+
+def _get_expected_background(beta_true: int, eps_background: float) -> float:
+    return beta_true * eps_background
+
+
+def _compute_mu_hat(
+    n_pred: int, meta: dict, ref_efficiencies: Sequence[float]
+) -> float:
+    gamma_true = _get_proportionate_gamma_true(meta)
+    beta_true = _get_proportionate_beta_true(meta)
+    expected_signal = _get_expected_signal(gamma_true, ref_efficiencies[0])
+    expected_background = _get_expected_background(beta_true, ref_efficiencies[1])
+    mu_hat = (
+        (n_pred - expected_background) / expected_signal if expected_signal > 0 else 0.0
+    )
+    return mu_hat
 
 
 def compute_nonconformity_scores(
@@ -119,6 +144,7 @@ def compute_nonconformity_scores(
     threshold: float,
     target: str = "mu_hat",  # can be "n_pred" or "mu_hat",
     how: str = "diff",  # method for computing nonconformity scores: "diff" or "abs"
+    ref_efficiencies: Optional[Sequence[float]] = None,
 ) -> Dict[str, List[int]]:
     scores: Dict[str, List[int]] = {name: [] for name in models}
     for (X_calib, y_calib), _meta in tqdm(
@@ -128,16 +154,15 @@ def compute_nonconformity_scores(
     ):
 
         X_calib = scaler.transform(X_calib)
-        n_obs = int(np.sum(y_calib))
-        mu_true = _meta["mu_true"]
-        gamma_true = _get_proportionate_gamma(_meta)
         for name, model in models.items():
             y_pred_proba = model.predict_proba(X_calib)[:, 1]
             n_pred = int(np.sum(y_pred_proba > threshold))
             if target == "mu_hat":
-                mu_hat = n_pred / gamma_true if gamma_true > 0 else 0.0
+                mu_true = _meta["mu_true"]
+                mu_hat = _compute_mu_hat(n_pred, _meta, ref_efficiencies)
                 scores[name].append(_nonconformity_scores(mu_hat, mu_true, how=how))
             elif target == "n_pred":
+                n_obs = int(np.sum(y_calib))
                 scores[name].append(_nonconformity_scores(n_pred, n_obs, how=how))
     return scores
 
@@ -148,17 +173,19 @@ def compute_mu_hat(
     calib_data: Sequence[Tuple[np.ndarray, np.ndarray]],
     calib_meta: Sequence[dict],
     threshold: float,
+    ref_efficiencies: Sequence[float],
 ) -> Tuple[Dict[str, List[float]], Dict[str, Dict[str, float]]]:
     mu_hat: Dict[str, List[float]] = {name: [] for name in models}
     for (X_calib, y_calib), meta in zip(calib_data, calib_meta):
         X_calib = scaler.transform(X_calib)
-        gamma_true = _get_proportionate_gamma(meta)
-        if gamma_true == 0:
+        # gamma_true = _get_proportionate_gamma_true(meta)
+        if meta["gamma_true"] == 0:
             continue
         for name, model in models.items():
             y_pred_proba = model.predict_proba(X_calib)[:, 1]
             n_pred = int(np.sum(y_pred_proba > threshold))
-            mu_hat[name].append(n_pred / gamma_true)
+            mu_pred = _compute_mu_hat(n_pred, meta, ref_efficiencies)
+            mu_hat[name].append(mu_pred)
 
     stats: Dict[str, Dict[str, float]] = {}
     for name, values in mu_hat.items():
@@ -185,6 +212,7 @@ def inference_on_test_set(
     scaler: StandardScaler,
     test_data: Sequence[Tuple[np.ndarray, np.ndarray, dict]],
     threshold: float,
+    ref_efficiencies_dict: Dict[Sequence[float]] = None,
     debug: bool = False,
 ) -> Tuple[Dict[str, List[float]], List[float], List[int]]:
     """
@@ -211,7 +239,8 @@ def inference_on_test_set(
     for X_test, y_test, meta_dict in tqdm(test_data, desc="Inference on test set"):
         X_test_scaled = scaler.transform(X_test)
 
-        gamma_true = _get_proportionate_gamma(meta_dict)
+        gamma_true = _get_proportionate_gamma_true(meta_dict)
+        beta_true = _get_proportionate_beta_true(meta_dict)
         mu_true = meta_dict["mu_true"]
         mu_true_list.append(float(mu_true))
         gamma_true_list.append(int(gamma_true))
@@ -219,6 +248,8 @@ def inference_on_test_set(
         if gamma_true == 0:
             continue
 
+        if ref_efficiencies_dict is None:
+            ref_efficiencies_dict = {model_name: (1.0, 1.0) for model_name in models}
         for name, model in models.items():
             y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
             y_pred = y_pred_proba > threshold
@@ -235,7 +266,18 @@ def inference_on_test_set(
             # counting metrics
             n_pred = int(np.sum(y_pred))
 
-            mu_hat = n_pred / gamma_true
+            expected_signal = _get_expected_signal(
+                gamma_true, ref_efficiencies_dict[name][0]
+            )
+            expected_background = _get_expected_background(
+                beta_true, ref_efficiencies_dict[name][1]
+            )
+
+            mu_hat = (
+                (n_pred - expected_background) / expected_signal
+                if expected_signal > 0
+                else 0.0
+            )
             mu_hat_test[name].append(mu_hat)
 
             if debug:
