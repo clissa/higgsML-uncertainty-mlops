@@ -31,10 +31,15 @@ from conformal_predictions.training import (
     inference_on_test_set,
 )
 
-# TODO: Refactor to support yaml config loading. It should take Settings attributes + OUTPUT_DIRNAME. Do not change parts/names that are not necessary for this.
+# TODO: Refactor to support yaml config loading. It should take Settings attributes + initial configs. Do not change parts/names that are not necessary for this.
+
+### MANUAL CHANGE THIS BEFORE RUNNING: ###
 HOW = "abs"  # method for computing nonconformity scores: "diff" or "abs"
 FIT_PARALLEL = False  # whether to fit models in parallel using joblib
-OUTPUT_DIRNAME = "higgs-2train-1valid-1calib-1test"
+PRED_FORMULA = r"$\hat{\mu} = \frac{n_{pred} - \epsilon_{bkg}\beta^*_{true}}{\epsilon_{sig}\gamma^*_{true}}$"  # should match training._compute_mu_hat logic; used in plot_mu_hat_distribution titles
+OUTPUT_DIRNAME = "higgs-sequential-q16q84-10train-10valid-10ref-10calib-10test"
+### END OF MANUAL CONFIGURATION     ###
+
 PLOTS_DIR = Path("results") / OUTPUT_DIRNAME / "plots"
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -53,6 +58,7 @@ class Settings:
     threshold: float = 0.5
     train_size: float = 10
     valid_size: float = 10
+    ref_size: float = 10
     calib_size: float = 10
     test_size: float = 10
     nonconf_target: str = "mu_hat"  # can be "n_pred" or "mu_hat"
@@ -63,7 +69,7 @@ class Settings:
 
 def load_trainval(
     cfg: Settings,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Read:
       - data/data.parquet
@@ -76,29 +82,35 @@ def load_trainval(
     base_dir = cfg.data_dir
     parquet_path = base_dir / "data" / "data.parquet"
     labels_path = base_dir / "labels" / "data.labels"
-    # --- Read parquet ---
     pf = pq.ParquetFile(parquet_path)
-    # first 3 row groups
-    # train_size = 2
-    # valid_size = 1
     train_tables = [pf.read_row_group(i) for i in range(cfg.train_size)]
     val_table = [
         pf.read_row_group(i)
         for i in range(cfg.train_size, cfg.train_size + cfg.valid_size)
     ]
+    ref_table = [
+        pf.read_row_group(i)
+        for i in range(
+            cfg.train_size + cfg.valid_size,
+            cfg.train_size + cfg.valid_size + cfg.ref_size,
+        )
+    ]
     # convert to numpy
     X_train = np.vstack([t.to_pandas().to_numpy() for t in train_tables])
     X_val = np.vstack([t.to_pandas().to_numpy() for t in val_table])
+    X_ref = np.vstack([t.to_pandas().to_numpy() for t in ref_table])
     # read labels
     y_all = np.loadtxt(labels_path)
-    # numero righe per ciascun row group
-    # rg0_rows = pf.metadata.row_group(0).num_rows
-    # rg1_rows = pf.metadata.row_group(1).num_rows
-    # rg2_rows = pf.metadata.row_group(2).num_rows
     # slicing labels
     y_train = y_all[: X_train.shape[0]]
     y_val = y_all[X_train.shape[0] : X_train.shape[0] + X_val.shape[0]]
-    return X_train, y_train, X_val, y_val
+    y_ref = y_all[
+        X_train.shape[0]
+        + X_val.shape[0] : X_train.shape[0]
+        + X_val.shape[0]
+        + X_ref.shape[0]
+    ]
+    return X_train, y_train, X_val, y_val, X_ref, y_ref
 
 
 def load_calib(
@@ -116,13 +128,9 @@ def load_calib(
     base_dir = cfg.data_dir
     parquet_path = base_dir / "data" / "data.parquet"
     labels_path = base_dir / "labels" / "data.labels"
-    # --- Leggi parquet ---
+
     pf = pq.ParquetFile(parquet_path)
-    # primi 3 row groups
-    # train_size = 2
-    # valid_size = 1
-    # calib_size = 2
-    calib_start_idx = cfg.train_size + cfg.valid_size
+    calib_start_idx = cfg.train_size + cfg.valid_size + cfg.ref_size
     calib_tables = [
         pf.read_row_group(i)
         for i in range(calib_start_idx, calib_start_idx + cfg.calib_size)
@@ -132,13 +140,9 @@ def load_calib(
     # read labels
     y_all = np.loadtxt(labels_path)
     y_calib = y_all[calib_start_label_idx : calib_start_label_idx + X_calib.shape[0]]
-    # X_calib_blocks = []
-    # y_calib_blocks = []
     calib_data = []
     metadata = []
     for i in range(0, X_calib.shape[0], cfg.block_size):
-        # X_calib_blocks.append(X_calib[i : i + cfg.block_size])
-        # y_calib_blocks.append(y_calib[i : i + cfg.block_size])
         block_length = X_calib[i : i + cfg.block_size].shape[0]
         calib_data.append(
             (X_calib[i : i + cfg.block_size], y_calib[i : i + cfg.block_size])
@@ -181,14 +185,8 @@ def load_test(
     base_dir = cfg.data_dir
     parquet_path = base_dir / "data" / "data.parquet"
     labels_path = base_dir / "labels" / "data.labels"
-    # --- Leggi parquet ---
     pf = pq.ParquetFile(parquet_path)
-    # primi 3 row groups
-    # train_size = 2
-    # valid_size = 1
-    # calib_size = 2
-    # test_size = 1
-    test_start_idx = cfg.train_size + cfg.valid_size + cfg.calib_size
+    test_start_idx = cfg.train_size + cfg.valid_size + cfg.ref_size + cfg.calib_size
     test_tables = [
         pf.read_row_group(i)
         for i in range(test_start_idx, test_start_idx + cfg.test_size)
@@ -290,6 +288,21 @@ def fit_models_parallel(
     models.update(dict(results))
 
 
+def get_model_efficiencies(model, X_ref, y_ref, cfg: Settings) -> Tuple[float, float]:
+    y_pred = (model.predict_proba(X_ref)[:, 1] > cfg.threshold).astype(int)
+
+    gamma_raw = np.sum(y_pred * (y_ref == 1))  # true positives
+    beta_raw = np.sum(y_pred * (y_ref == 0))  # false positives
+
+    n_signal = np.sum(y_ref == 1)
+    n_background = np.sum(y_ref == 0)
+
+    eps_signal = gamma_raw / n_signal if n_signal > 0 else 0.0
+    eps_background = beta_raw / n_background if n_background > 0 else 0.0
+
+    return eps_signal, eps_background
+
+
 def main() -> None:
     start_time = datetime.now()
     print(f"Script started at {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -298,31 +311,37 @@ def main() -> None:
     cfg = Settings()
     np.random.seed(cfg.seed)
 
+    # STEP 1: Load data
     step_start = datetime.now()
     print("\n[Data preparation...]")
-    X_train, y_train, X_val, y_val = load_trainval(cfg)
+    X_train, y_train, X_val, y_val, X_ref, y_ref = load_trainval(cfg)
     n_trainval = X_train.shape[0] + X_val.shape[0]
-    # X_train, y_train, X_val, y_val = (
+    n_ref = X_ref.shape[0]
+    # X_train, y_train, X_val, y_val, X_ref, y_ref = (
     #     X_train[:10000],
     #     y_train[:10000],
     #     X_val[:5000],
     #     y_val[:5000],
+    #     X_ref[:5000],
+    #     y_ref[:5000],
     # )
-    calib_data, calib_meta = load_calib(cfg, calib_start_label_idx=n_trainval)
+    calib_data, calib_meta = load_calib(cfg, calib_start_label_idx=n_trainval + n_ref)
     n_calib = np.sum([_[0].shape[0] for _ in calib_data])
-    # calib_data, calib_meta = calib_data[:100], calib_meta[:100]
-    test_data = load_test(cfg, test_start_label_idx=n_trainval + n_calib)
+    # calib_data, calib_meta = calib_data[:100], calib_meta[:1000]
+    test_data = load_test(cfg, test_start_label_idx=n_trainval + n_ref + n_calib)
     n_test = np.sum([_[0].shape[0] for _ in test_data])
-    # test_data = test_data[:100]
+    # test_data = test_data[:1000]
     print(f"Total train+val events: {n_trainval}")
+    print(f"Total reference events: {n_ref}")
     print(f"Total calib events: {n_calib}\t{len(calib_data)} blocks")
     print(f"Total test events: {n_test}\t{len(test_data)} blocks")
 
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_val_scaled = scaler.transform(X_val)
+    X_ref_scaled = scaler.transform(X_ref)
 
-    print("Starting training on:")
+    print("Training data:")
     print(f"  X_train shape: {X_train_scaled.shape}, y_train shape: {y_train.shape}")
     print(f"  X_val shape: {X_val_scaled.shape}, y_val shape: {y_val.shape}")
     print(
@@ -344,6 +363,7 @@ def main() -> None:
         f"Data preparation completed in {int(step_duration // 3600):02d}:{int((step_duration % 3600) // 60):02d}:{int(step_duration % 60):02d}"
     )
 
+    # STEP 2: Train models
     step_start = datetime.now()
     print("\n[Model training...]")
     if FIT_PARALLEL:
@@ -359,6 +379,7 @@ def main() -> None:
         f"Model training completed in {int(step_duration // 3600):02d}:{int((step_duration % 3600) // 60):02d}:{int(step_duration % 60):02d}"
     )
 
+    # STEP 3: Evaluate models on validation set
     step_start = datetime.now()
     # print classification performance on validation set
     performance_metrics = evaluate_models(models, X_val_scaled, y_val)
@@ -382,6 +403,27 @@ def main() -> None:
         f"Model scoring completed in {int(step_duration // 3600):02d}:{int((step_duration % 3600) // 60):02d}:{int(step_duration % 60):02d}"
     )
 
+    # STEP 4: Get reference efficiencies on reference set
+    step_start = datetime.now()
+
+    ref_efficiencies_dict = {}
+    for model_name, model in models.items():
+        eps_signal, eps_background = get_model_efficiencies(
+            model, X_ref_scaled, y_ref, cfg
+        )
+        ref_efficiencies_dict[model_name] = (eps_signal, eps_background)
+        print(
+            f"{model_name} reference efficiencies: "
+            f"{eps_signal=:.4f}, "
+            f"{eps_background=:.4f}"
+        )
+
+    step_duration = (datetime.now() - step_start).total_seconds()
+    print(
+        f"Reference efficiencies computation completed in {int(step_duration // 3600):02d}:{int((step_duration % 3600) // 60):02d}:{int(step_duration % 60):02d}"
+    )
+
+    # STEP 5: Calibration and nonconformity scores computation
     step_start = datetime.now()
     print("\n[Calibration...]")
     print("\nComputing nonconformity scores...")
@@ -398,6 +440,7 @@ def main() -> None:
         cfg.threshold,
         target=cfg.nonconf_target,
         how=HOW,
+        ref_efficiencies=ref_efficiencies_dict.get(model_name, (1.0, 1.0)),
     )
 
     for model_name, values in nonconf_scores.items():
@@ -413,7 +456,12 @@ def main() -> None:
 
     print("\nComputing mu_hat...")
     mu_hat, stats = compute_mu_hat(
-        models, scaler, calib_data, calib_meta, cfg.threshold
+        models,
+        scaler,
+        calib_data,
+        calib_meta,
+        cfg.threshold,
+        ref_efficiencies=ref_efficiencies_dict.get(model_name, (1.0, 1.0)),
     )
     np.savez(
         STATS_DIR / "mu_hat_calib_distribution.npz",
@@ -427,7 +475,12 @@ def main() -> None:
         },
     )
 
-    plot_mu_hat_distribution(mu_hat, stats, output_dir=PLOTS_DIR)
+    plot_mu_hat_distribution(
+        mu_hat,
+        stats,
+        output_dir=PLOTS_DIR,
+        pred_formula=PRED_FORMULA,
+    )
     df_stats = pd.DataFrame(
         [{"Model": model_name, **stats[model_name]} for model_name in stats.keys()]
     )
@@ -443,7 +496,7 @@ def main() -> None:
     print("\nRunning inference on test set...")
 
     mu_hat_test, mu_true_list, gamma_true_list, test_metrics = inference_on_test_set(
-        models, scaler, test_data, cfg.threshold
+        models, scaler, test_data, cfg.threshold, ref_efficiencies_dict
     )
 
     # Compute confidence intervals for test set predictions
@@ -500,9 +553,9 @@ def main() -> None:
             reset = "\033[0m"
             print(
                 f"  {color}Exp {exp_idx}: "
-                f"μ̂: {mu_hat:.3f} "
+                f"$\hat{{\mu}}$: {mu_hat:.3f} "
                 f"CI: [{mu_hat_lower:.3f}, {mu_hat_upper:.3f}] "
-                f"μ_true: {mu_true:.3f}{reset}"
+                f"$\mu_{{true}}$: {mu_true:.3f}{reset}"
             )
             print(test_metrics[model_name][exp_idx])
 
