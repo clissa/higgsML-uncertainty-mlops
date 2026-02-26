@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
@@ -290,9 +291,15 @@ def fit_models_parallel(
 
 
 def main() -> None:
+    start_time = datetime.now()
+    print(f"Script started at {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    init_time = start_time
+
     cfg = Settings()
     np.random.seed(cfg.seed)
 
+    step_start = datetime.now()
+    print("\n[Data preparation...]")
     X_train, y_train, X_val, y_val = load_trainval(cfg)
     n_trainval = X_train.shape[0] + X_val.shape[0]
     # X_train, y_train, X_val, y_val = (
@@ -332,7 +339,13 @@ def main() -> None:
     )
 
     contourplot_data(X_val_scaled, y_val, output_dir=PLOTS_DIR)
+    step_duration = (datetime.now() - step_start).total_seconds()
+    print(
+        f"Data preparation completed in {int(step_duration // 3600):02d}:{int((step_duration % 3600) // 60):02d}:{int(step_duration % 60):02d}"
+    )
 
+    step_start = datetime.now()
+    print("\n[Model training...]")
     if FIT_PARALLEL:
         models = _build_models(cfg.seed, n_jobs=1)
         fit_models_parallel(
@@ -341,7 +354,12 @@ def main() -> None:
     else:
         models = _build_models(cfg.seed, n_jobs=-1)
         _fit_models(models, X_train_scaled, y_train)
+    step_duration = (datetime.now() - step_start).total_seconds()
+    print(
+        f"Model training completed in {int(step_duration // 3600):02d}:{int((step_duration % 3600) // 60):02d}:{int(step_duration % 60):02d}"
+    )
 
+    step_start = datetime.now()
     # print classification performance on validation set
     performance_metrics = evaluate_models(models, X_val_scaled, y_val)
     for model_name, metrics in performance_metrics.items():
@@ -359,8 +377,13 @@ def main() -> None:
             f"{model_name} N signal events (p_pred > {cfg.threshold}): "
             f"{count} / {int(np.sum(y_val))} (true)"
         )
+    step_duration = (datetime.now() - step_start).total_seconds()
+    print(
+        f"Model scoring completed in {int(step_duration // 3600):02d}:{int((step_duration % 3600) // 60):02d}:{int(step_duration % 60):02d}"
+    )
 
-    # nonconformity scores
+    step_start = datetime.now()
+    print("\n[Calibration...]")
     print("\nComputing nonconformity scores...")
     print(f"{len(calib_data)} calibration samples")
     print(
@@ -411,7 +434,12 @@ def main() -> None:
     print("\nStatistics Summary:")
     print(df_stats)
     df_stats.to_csv(STATS_DIR / "mu_hat_calibration_stats.csv", index=False)
+    step_duration = (datetime.now() - step_start).total_seconds()
+    print(
+        f"Calibration completed in {int(step_duration // 3600):02d}:{int((step_duration % 3600) // 60):02d}:{int(step_duration % 60):02d}"
+    )
 
+    step_start = datetime.now()
     print("\nRunning inference on test set...")
 
     mu_hat_test, mu_true_list, gamma_true_list, test_metrics = inference_on_test_set(
@@ -465,7 +493,6 @@ def main() -> None:
             zip(mu_hat_values, mu_hat_lower_bounds, mu_hat_upper_bounds, mu_true_list)
         ):
             if exp_idx % 50 != 0:
-                # exp_idx += 1
                 continue
             print("printing every 50th experiment:")
             # Determine color based on whether CI contains mu_true
@@ -478,6 +505,16 @@ def main() -> None:
                 f"μ_true: {mu_true:.3f}{reset}"
             )
             print(test_metrics[model_name][exp_idx])
+
+    step_duration = (datetime.now() - step_start).total_seconds()
+    print(
+        f"Testing completed in {int(step_duration // 3600):02d}:{int((step_duration % 3600) // 60):02d}:{int(step_duration % 60):02d}"
+    )
+    print(f"Script finished at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    total_duration = (datetime.now() - init_time).total_seconds()
+    print(
+        f"Total script duration: {int(total_duration // 3600):02d}:{int((total_duration % 3600) // 60):02d}:{int(total_duration % 60):02d}"
+    )
 
 
 if __name__ == "__main__":
