@@ -16,6 +16,7 @@ def plot_mu_hat_distribution(
     mu_hat: Dict[str, List[float]],
     stats: Dict[str, Dict[str, float]],
     output_dir: Path = Path("plots"),
+    pred_formula: str = r"$\hat{\mu} = n_{pred} / \gamma_{true}$",
 ) -> None:
     """Plot mu_hat distributions."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -57,6 +58,13 @@ def plot_mu_hat_distribution(
             label=f"mean: {s['mu_mean']:.3f}",
         )
         ax.axvline(
+            s["q68"],
+            color="tab:cyan",
+            linestyle="--",
+            linewidth=2,
+            label=f"q68: {s['q68']:.3f}",
+        )
+        ax.axvline(
             s["q84"],
             color="purple",
             linestyle="--",
@@ -71,8 +79,8 @@ def plot_mu_hat_distribution(
             label=f"MAP: {s['map']:.3f}",
         )
 
-        ax.set_title(f"μ̂ Distribution: {model_name}")
-        ax.set_xlabel("μ̂ = n_pred / γ_true")
+        ax.set_title(f"$\hat{{\mu}}$ Distribution: {model_name}")
+        ax.set_xlabel(pred_formula)
         ax.set_ylabel("Density")
         ax.legend()
         ax.grid(alpha=0.3)

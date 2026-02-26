@@ -173,6 +173,7 @@ def compute_mu_hat(
                 "map": map_estimate,
                 "mu_median": float(np.median(values)),
                 "mu_mean": float(np.mean(values)),
+                "q68": float(np.percentile(values, 68)),
                 "q84": float(np.percentile(values, 84)),
             }
 
