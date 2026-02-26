@@ -329,16 +329,29 @@ def contourplot_data(
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     feature_names = [f"Feature {i}" for i in range(X.shape[1])]
+
+    # downsample if too large for better visualization and performance
+    max_n_points = 500_000
+    if len(X) > max_n_points:
+        idx = np.random.choice(len(X), size=max_n_points, replace=False)
+        X = X[idx]
+        y = y[idx]
+
     if X.shape[1] < 2:
         return
     elif X.shape[1] > 2:
-        X = PCA(n_components=2, random_state=0).fit_transform(X)
-        feature_names = ["PCA 1", "PCA 2"]
+        # use PCA to reduce to 2D for visualization
+        pca = PCA(n_components=2, random_state=0)
+        X = pca.fit_transform(X)
+        var_ratio = pca.explained_variance_ratio_
+        feature_names = [
+            f"PCA 1 ({var_ratio[0]*100:.1f}%)",
+            f"PCA 2 ({var_ratio[1]*100:.1f}%)",
+        ]
 
     signal = X[y == 1][:, :2]
     background = X[y == 0][:, :2]
-    if len(signal) == 0 or len(background) == 0:
-        return
+
     fig, ax = plt.subplots(figsize=(9, 7))
     x_min, x_max = X[:, 0].min(), X[:, 0].max()
     y_min, y_max = X[:, 1].min(), X[:, 1].max()
@@ -353,11 +366,13 @@ def contourplot_data(
     signal_kde = gaussian_kde(signal.T)
     background_density = background_kde(grid).reshape(x_grid.shape)
     signal_density = signal_kde(grid).reshape(x_grid.shape)
+    background_levels = np.percentile(background_density, [50, 75, 90, 95, 99])
+    signal_levels = np.percentile(signal_density, [50, 75, 90, 95, 99])
     ax.contourf(
         x_grid,
         y_grid,
         background_density,
-        levels=10,
+        levels=background_levels,
         cmap="Blues",
         alpha=0.6,
     )
@@ -365,24 +380,24 @@ def contourplot_data(
         x_grid,
         y_grid,
         background_density,
-        levels=6,
+        levels=background_levels,
         colors="blue",
-        linewidths=1.0,
+        linewidths=1.5,
     )
     ax.scatter(
         background[:, 0],
         background[:, 1],
         s=8,
         c="blue",
-        alpha=0.15,
-        label="Background",
+        alpha=0.25,
+        label=f"Background ({len(background)} events)",
         rasterized=True,
     )
     ax.contourf(
         x_grid,
         y_grid,
         signal_density,
-        levels=10,
+        levels=signal_levels,
         cmap="Reds",
         alpha=0.6,
     )
@@ -390,9 +405,9 @@ def contourplot_data(
         x_grid,
         y_grid,
         signal_density,
-        levels=6,
+        levels=signal_levels,
         colors="red",
-        linewidths=1.2,
+        linewidths=1.5,
     )
     ax.scatter(
         signal[:, 0],
@@ -400,12 +415,13 @@ def contourplot_data(
         s=10,
         c="red",
         alpha=0.25,
-        label="Signal",
+        label=f"Signal ({len(signal)} events)",
         rasterized=True,
     )
+
     ax.set_xlabel(feature_names[0])
     ax.set_ylabel(feature_names[1])
-    ax.set_title("Signal vs Background Density")
+    ax.set_title(f"Signal vs Background Density ({min(len(X), max_n_points)} events)")
     ax.legend(frameon=False)
     ax.grid(alpha=0.25)
     plt.tight_layout()
