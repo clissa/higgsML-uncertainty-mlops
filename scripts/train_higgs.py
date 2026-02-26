@@ -29,6 +29,7 @@ from conformal_predictions.training import (
 )
 
 # TODO: Refactor to support yaml config loading. It should take Settings attributes + OUTPUT_DIRNAME. Do not change parts/names that are not necessary for this.
+HOW = "abs"  # method for computing nonconformity scores: "diff" or "abs"
 OUTPUT_DIRNAME = "higgs-2train-1valid-1calib-1test"
 PLOTS_DIR = Path("results") / OUTPUT_DIRNAME / "plots"
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -323,7 +324,13 @@ def main() -> None:
     )
     print(f"\t...using {cfg.nonconf_target} as target for nonconformity scores")
     nonconf_scores = compute_nonconformity_scores(
-        models, scaler, calib_data, calib_meta, cfg.threshold, target=cfg.nonconf_target
+        models,
+        scaler,
+        calib_data,
+        calib_meta,
+        cfg.threshold,
+        target=cfg.nonconf_target,
+        how=HOW,
     )
 
     for model_name, values in nonconf_scores.items():
@@ -377,12 +384,15 @@ def main() -> None:
     for model_name, mu_hat_values in mu_hat_test.items():
         if cfg.nonconf_target == "mu_hat":
             mu_hat_lower_bounds, mu_hat_upper_bounds = compute_confidence_interval(
-                np.array(mu_hat_values), nonconf_scores_file, model_name
+                np.array(mu_hat_values),
+                nonconf_scores_file,
+                model_name,
+                how=HOW,
             )
         elif cfg.nonconf_target == "n_pred":
             n_preds = mu_hat_values * np.array(gamma_true_list)
             n_lower, n_upper = compute_confidence_interval(
-                n_preds, nonconf_scores_file, model_name
+                n_preds, nonconf_scores_file, model_name, how=HOW
             )
             mu_hat_lower_bounds = n_lower / np.array(gamma_true_list)
             mu_hat_upper_bounds = n_upper / np.array(gamma_true_list)
