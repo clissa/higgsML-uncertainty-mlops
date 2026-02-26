@@ -2,15 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+from joblib import Parallel, delayed
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
+from threadpoolctl import threadpool_limits
 from tqdm.auto import tqdm
 
 from conformal_predictions.data_viz import (
@@ -30,6 +32,7 @@ from conformal_predictions.training import (
 
 # TODO: Refactor to support yaml config loading. It should take Settings attributes + OUTPUT_DIRNAME. Do not change parts/names that are not necessary for this.
 HOW = "abs"  # method for computing nonconformity scores: "diff" or "abs"
+FIT_PARALLEL = False  # whether to fit models in parallel using joblib
 OUTPUT_DIRNAME = "higgs-2train-1valid-1calib-1test"
 PLOTS_DIR = Path("results") / OUTPUT_DIRNAME / "plots"
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -221,7 +224,7 @@ def load_test(
 
 
 # TODO: Add more models and hyperparameter tuning: in particular, try probability regression VS classification.
-def _build_models(seed: int) -> Dict[str, object]:
+def _build_models(seed: int, n_jobs: int) -> Dict[str, object]:
     return {
         "GLM": LogisticRegression(
             penalty="l2",
@@ -232,7 +235,7 @@ def _build_models(seed: int) -> Dict[str, object]:
         "Random Forest": RandomForestClassifier(
             n_estimators=50,
             criterion="gini",
-            n_jobs=-1,
+            n_jobs=n_jobs,
             random_state=seed,
         ),
         "MLP": MLPClassifier(
@@ -244,11 +247,46 @@ def _build_models(seed: int) -> Dict[str, object]:
     }
 
 
+def _fit_one(name: str, model: Any, X, y) -> Tuple[str, Any]:
+    model.fit(X, y)
+    return name, model
+
+
 def _fit_models(
     models: Dict[str, object], X_train: np.ndarray, y_train: np.ndarray
 ) -> None:
     for model in tqdm(models.values(), desc="Training models"):
-        model.fit(X_train, y_train)
+        _ = _fit_one("", model, X_train, y_train)
+
+
+def fit_models_parallel(
+    models: Dict[str, Any],
+    X_train,
+    y_train,
+    *,
+    n_jobs: int = -1,
+    prefer_threads: bool = False,
+    memmap_threshold: str = "200M",
+    blas_threads: int = 1,
+) -> None:
+    for model in models.values():
+        if hasattr(model, "n_jobs"):
+            model.n_jobs = 1
+
+    backend = "threading" if prefer_threads else "loky"
+    items = list(models.items())
+
+    with threadpool_limits(limits=blas_threads):
+        results = Parallel(
+            n_jobs=n_jobs,
+            backend=backend,
+            max_nbytes=memmap_threshold,
+        )(
+            delayed(_fit_one)(name, model, X_train, y_train)
+            for name, model in tqdm(items, desc=f"Training models ({backend})")
+        )
+
+    models.update(dict(results))
 
 
 def main() -> None:
@@ -295,8 +333,14 @@ def main() -> None:
 
     contourplot_data(X_val_scaled, y_val, output_dir=PLOTS_DIR)
 
-    models = _build_models(cfg.seed)
-    _fit_models(models, X_train_scaled, y_train)
+    if FIT_PARALLEL:
+        models = _build_models(cfg.seed, n_jobs=1)
+        fit_models_parallel(
+            models, X_train_scaled, y_train, n_jobs=-1, memmap_threshold="200M"
+        )
+    else:
+        models = _build_models(cfg.seed, n_jobs=-1)
+        _fit_models(models, X_train_scaled, y_train)
 
     # print classification performance on validation set
     performance_metrics = evaluate_models(models, X_val_scaled, y_val)
