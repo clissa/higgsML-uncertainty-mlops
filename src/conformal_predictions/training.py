@@ -95,8 +95,16 @@ def _random_perturbation_for_numerical_stability() -> float:
     return np.random.normal(0, 1e-6)
 
 
-def _nonconformity_scores(pred, target) -> float:
-    return target - pred + _random_perturbation_for_numerical_stability()
+def _nonconformity_scores(pred, target, how: str = "diff") -> float:
+    """Compute nonconformity score based on the difference between prediction and target.
+    Args: how: diff (target - pred) or abs_diff (|target - pred|)"""
+    if how == "diff":
+        score = target - pred
+    elif how == "abs":
+        score = abs(target - pred)
+    else:
+        raise ValueError(f"Unknown how value: {how}")
+    return score + _random_perturbation_for_numerical_stability()
 
 
 def _get_proportionate_gamma(meta: dict) -> float:
@@ -109,7 +117,8 @@ def compute_nonconformity_scores(
     calib_data: Sequence[Tuple[np.ndarray, np.ndarray]],
     calib_meta: Sequence[dict],
     threshold: float,
-    target: str = "mu_hat",  # can be "n_pred" or "mu_hat"
+    target: str = "mu_hat",  # can be "n_pred" or "mu_hat",
+    how: str = "diff",  # method for computing nonconformity scores: "diff" or "abs"
 ) -> Dict[str, List[int]]:
     scores: Dict[str, List[int]] = {name: [] for name in models}
     for (X_calib, y_calib), _meta in tqdm(
@@ -117,6 +126,7 @@ def compute_nonconformity_scores(
         total=len(calib_data),
         desc="Computing nonconformity scores",
     ):
+
         X_calib = scaler.transform(X_calib)
         n_obs = int(np.sum(y_calib))
         mu_true = _meta["mu_true"]
@@ -126,9 +136,9 @@ def compute_nonconformity_scores(
             n_pred = int(np.sum(y_pred_proba > threshold))
             if target == "mu_hat":
                 mu_hat = n_pred / gamma_true if gamma_true > 0 else 0.0
-                scores[name].append(_nonconformity_scores(mu_hat, mu_true))
+                scores[name].append(_nonconformity_scores(mu_hat, mu_true, how=how))
             elif target == "n_pred":
-                scores[name].append(_nonconformity_scores(n_pred, n_obs))
+                scores[name].append(_nonconformity_scores(n_pred, n_obs, how=how))
     return scores
 
 
@@ -241,6 +251,7 @@ def compute_confidence_interval(
     y_pred,
     nonconf_scores_file: Path,
     model_name: str,
+    how: str = "diff",
 ) -> Tuple[float, float]:
     """
     Compute confidence interval from calibration nonconformity scores.
@@ -249,7 +260,7 @@ def compute_confidence_interval(
         y_pred: Predicted value for which to compute the confidence interval
         nonconf_scores_file: Path to .npz file containing nonconformity scores
         model_name: Name of the model to extract scores for
-
+        how: Method used to get nonconformity scores ("diff" or "abs")
     Returns:
         Tuple of (lower_bound, upper_bound) for the confidence interval
     """
@@ -259,8 +270,12 @@ def compute_confidence_interval(
 
     scores = data[model_name]
 
-    q_low = float(np.percentile(scores, 16))
-    q_high = float(np.percentile(scores, 84))
+    if how == "diff":
+        q_low = float(np.percentile(scores, 16))
+        q_high = float(np.percentile(scores, 84))
+    elif how == "abs":
+        q_low = -np.percentile(scores, 68)
+        q_high = np.percentile(scores, 68)
 
     lower_bound = y_pred + q_low
     upper_bound = y_pred + q_high
