@@ -1,0 +1,153 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Realistic WandB Test Configuration for Conformal Prediction Pipeline
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# This configuration demonstrates a complete training run with wandb tracking
+# enabled for experiment monitoring and artifact management.
+#
+# Models trained: GLM (Logistic Regression), Random Forest, MLP
+# Expected training time: ~2-5 minutes on CPU
+# Expected convergence: MLP should reach ~85% accuracy after 50 epochs
+#
+# ───────────────────────────────────────────────────────────────────────────
+
+# Dataset & Physics Parameters
+# ─────────────────────────────
+dataset: toy                       # "toy" for pseudo-experiments, "higgs" for real data
+data_dir: data/toy_scale_easy      # Directory containing *.npz experiment files
+mu: 1.0                            # Signal strength parameter (Higgs production rate)
+
+# Reproducibility
+# ───────────────
+seed: 42                           # Fixed random seed for deterministic results
+
+# Data Splitting Strategy
+# ────────────────────────
+# Total experiments: ~1000 drawn from data_dir
+# Split: ~600 train, ~150 validation, ~125 calibration, ~125 test
+test_prefixes: ["00", "01"]        # Hold out experiments starting with these hex prefixes
+n_test_experiments: 200            # Number of held-out test experiments
+valid_size: 0.2                    # 20% of remaining data for validation
+calib_size: 0.3                    # 30% of validation set used for calibration
+
+# Model Inference Parameters
+# ───────────────────────────
+threshold: 0.5                     # Binary classification threshold for signal/background
+
+# Output Configuration
+# ────────────────────
+output_dir: results                # Base directory for all run artifacts
+run_name: wandb-test-run           # Human-readable identifier for this experiment
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 2: CALIBRATION (Conformal Prediction)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Calibration constructs prediction intervals using the conformal prediction
+# framework. It quantifies uncertainty by computing nonconformity scores on
+# a held-out calibration set and deriving coverage guarantees.
+#
+# Training Evolution:
+# - Nonconformity scores computed for each model's calibration set predictions
+# - Quantiles extracted at significance level α
+# - Prediction intervals constructed: [point_estimate - q_lower, point_estimate + q_upper]
+#
+calibration:
+  target: mu_hat                   # Target variable: "mu_hat" (signal strength) or "n_pred" (event count)
+  how: diff                        # Score method: "diff" (signed error) or "abs" (absolute error)
+  alpha: 0.3173                    # Significance level ≈ 1σ (68.27% coverage)
+                                   # - alpha=0.3173: 68% coverage (1-sigma)
+                                   # - alpha=0.0455: 95% coverage (2-sigma)
+                                   # - alpha=0.0027: 99.7% coverage (3-sigma)
+  ci_type: asymmetric              # Interval type: "asymmetric" (flexible bounds) or "central" (symmetric ±q)
+  enabled: true                    # Enable calibration stage in pipeline
+  save_artifacts: true             # Persist calibration scores, quantiles, and diagnostic plots
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 2: EVALUATION (Performance Metrics)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Evaluation computes standard classification metrics (accuracy, precision,
+# recall, F1, AUC) and conformal-specific metrics (coverage, interval width).
+#
+# Training Evolution:
+# - GLM: Fast convergence, baseline ~80% accuracy
+# - Random Forest: Stable ensemble, ~82-85% accuracy with low variance
+# - MLP: Gradual improvement over 50 epochs, final ~85-88% accuracy
+#
+# Metrics tracked per model:
+# - Classification: accuracy, precision, recall, F1, PR-AUC, ROC-AUC
+# - Conformal: empirical coverage, mean interval width, calibration sharpness
+#
+evaluation:
+  metrics: [loss, accuracy, precision, recall, f1, pr_auc, roc_auc]
+  enabled: true                    # Enable evaluation stage in pipeline
+  save_artifacts: true             # Persist metric tables, confusion matrices, ROC curves
+  ci_score_lambda: 1.0             # Penalty coefficient balancing coverage vs. sharpness
+  ci_score_epsilon: 1.0e-6         # Numerical stability constant for CI score computation
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 3: TRACKING (WandB Integration)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# WandB tracking enables:
+# - Real-time metric logging (accuracy, loss per epoch for MLP)
+# - Artifact versioning (trained models, calibration data)
+# - Hyperparameter comparison across runs
+# - Reproducibility via config snapshots
+#
+# Expected WandB Dashboard:
+# - Overview panel: run status, duration, git commit
+# - Charts: accuracy/loss curves for MLP training epochs
+# - Tables: final metrics per model (GLM, RF, MLP)
+# - Artifacts: model checkpoints, calibration plots, run metadata JSON
+#
+tracking:
+  enabled: true                    # Enable local run indexing (JSON manifest)
+  wandb_enabled: true              # Enable WandB cloud logging
+  wandb_project: higgsML-uncertainty  # WandB project name (create via web UI or auto-created)
+  wandb_entity: null               # WandB team/user (null = use default entity)
+  index_path: results/runs_index.json  # Local run registry for cross-run queries
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TRAINING EVOLUTION SUMMARY
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Given Configuration:
+# - Calibration coverage: ~68% (1-sigma intervals)
+# - Training set: ~600 experiments × ~1000 events each ≈ 600k events
+# - Validation set: ~150 experiments ≈ 150k events
+# - Calibration set: ~125 experiments ≈ 125k events
+# - Test set: ~125 experiments ≈ 125k events
+#
+# Expected Pipeline Behavior:
+#
+# 1. TRAINING STAGE (~1-2 min):
+#    - GLM: Single-pass fit, immediate convergence
+#    - Random Forest: 50 trees grown in parallel
+#    - MLP: 1000 max iterations, early stopping likely around epoch 200-300
+#
+# 2. CALIBRATION STAGE (~10-20 sec):
+#    - Generate predictions on 125 calibration experiments
+#    - Compute nonconformity scores: |mu_true - mu_pred|
+#    - Extract 68th percentile → quantile thresholds
+#    - Construct prediction intervals for each model
+#
+# 3. EVALUATION STAGE (~10-20 sec):
+#    - Apply models to 125 test experiments
+#    - Compute classification metrics per model
+#    - Validate empirical coverage ≈ 68% ± 2%
+#    - Generate diagnostic plots (calibration curves, interval histograms)
+#
+# 4. WANDB LOGGING:
+#    - Config uploaded at run start
+#    - Metrics logged after evaluation stage
+#    - Artifacts uploaded (plots, model files) at run completion
+#    - Total upload ~5-10 MB (plots dominate size)
+#
+# Convergence Indicators:
+# - Validation accuracy plateau (MLP stops improving)
+# - Empirical coverage matches target alpha ± 2%
+# - Interval widths stabilize across test experiments
+#
+# ═══════════════════════════════════════════════════════════════════════════
