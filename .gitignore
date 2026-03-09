@@ -13,6 +13,8 @@ venv*/
 results/
 outputs/
 logs/
+.github/
+tasks/
 
 # Data
 data/raw/

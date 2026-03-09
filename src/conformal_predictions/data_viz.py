@@ -296,7 +296,7 @@ def plot_confidence_intervals(
 
         # TODO: enhance to support custom confidence level
         # add legend with empirical coverage and nominal confidence level
-        coverage_legend = f"""Empirical coverage: {empirical_coverage*100:.3f}%\nConfidence level(1-α): 68%"""
+        coverage_legend = f"""Empirical coverage: {empirical_coverage*100:.3f}%\nConfidence level(1-$\\alpha$): 68%"""
         ax.text(
             0.95,
             0.99,
