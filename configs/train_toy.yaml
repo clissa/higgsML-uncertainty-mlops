@@ -28,7 +28,7 @@ output_dir: results
 
 # --- Phase 2: Calibration ---
 calibration:
-  target: mu            # "mu" for signal strength, "n_pred" for event count
+  target: mu_hat        # "mu_hat" for signal strength, "n_pred" for event count
   how: diff             # "diff" or "abs"
   alpha: 0.3173         # significance level (~1-sigma)
   ci_type: asymmetric   # "asymmetric" or "central"

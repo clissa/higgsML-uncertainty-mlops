@@ -183,7 +183,7 @@ class TestCalibrationResult:
         assert r.config is None
 
     def test_with_data(self):
-        cfg = CalibrationConfig(target="mu", alpha=0.05)
+        cfg = CalibrationConfig(target="mu_hat", alpha=0.05)
         r = CalibrationResult(
             scores={"M": np.array([0.1, 0.2])},
             quantiles={"M": (-0.5, 0.5)},

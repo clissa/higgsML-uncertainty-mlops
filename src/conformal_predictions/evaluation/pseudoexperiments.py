@@ -158,7 +158,7 @@ def evaluate_on_test_set(
             mu_hat_values = mu_hat_test[model_name]
             scores_arr = calibration_result.scores[model_name]
 
-            if calib_config.target == "mu":
+            if calib_config.target == "mu_hat":
                 lower, upper = compute_confidence_interval(
                     np.array(mu_hat_values),
                     scores_arr,

@@ -65,7 +65,7 @@ def compute_nonconformity_scores(
     calib_data: Sequence[Tuple[np.ndarray, np.ndarray]],
     calib_meta: Sequence[dict],
     threshold: float,
-    target: str = "mu",
+    target: str = "mu_hat",
     how: str = "diff",
     ref_efficiencies: Optional[Sequence[float]] = None,
 ) -> Dict[str, List[float]]:
@@ -74,12 +74,12 @@ def compute_nonconformity_scores(
     Parameters
     ----------
     target : str
-        ``"mu"`` for signal-strength scores, ``"n_pred"`` for event count.
+        ``"mu_hat"`` for signal-strength scores, ``"n_pred"`` for event count.
     how : str
         ``"diff"`` or ``"abs"``.
     ref_efficiencies : sequence of float, optional
         ``(eps_signal, eps_background)`` per model.  Required when
-        ``target == "mu"``.
+        ``target == "mu_hat"``.
 
     Returns
     -------
@@ -97,7 +97,7 @@ def compute_nonconformity_scores(
             y_proba = model.predict_proba(X_scaled)[:, 1]
             n_pred = int(np.sum(y_proba > threshold))
 
-            if target == "mu":
+            if target == "mu_hat":
                 mu_true = _meta["mu_true"]
                 mu_hat = _compute_mu_hat(n_pred, _meta, ref_efficiencies)
                 scores[name].append(nonconformity_score(mu_hat, mu_true, how=how))
@@ -106,7 +106,7 @@ def compute_nonconformity_scores(
                 scores[name].append(nonconformity_score(n_pred, n_obs, how=how))
             else:
                 raise ValueError(
-                    f"Unknown target: {target!r} (expected 'mu' or 'n_pred')"
+                    f"Unknown target: {target!r} (expected 'mu_hat' or 'n_pred')"
                 )
 
     return scores

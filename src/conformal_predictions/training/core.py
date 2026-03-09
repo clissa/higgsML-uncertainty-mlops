@@ -91,6 +91,42 @@ def get_events_count(
     return counts
 
 
+def compute_model_efficiencies(
+    models: Dict[str, object],
+    X: np.ndarray,
+    y: np.ndarray,
+    threshold: float,
+) -> Dict[str, Tuple[float, float]]:
+    """Compute signal and background efficiencies for each model.
+
+    Parameters
+    ----------
+    models : dict
+        Trained model catalogue.
+    X : np.ndarray
+        Feature matrix (already scaled).
+    y : np.ndarray
+        True labels (1 = signal, 0 = background).
+    threshold : float
+        Classification decision threshold.
+
+    Returns
+    -------
+    Dict mapping model name to ``(eps_signal, eps_background)``.
+    """
+    efficiencies: Dict[str, Tuple[float, float]] = {}
+    n_signal = int(np.sum(y == 1))
+    n_background = int(np.sum(y == 0))
+    for name, model in models.items():
+        y_pred = (model.predict_proba(X)[:, 1] > threshold).astype(int)
+        tp = int(np.sum(y_pred * (y == 1)))
+        fp = int(np.sum(y_pred * (y == 0)))
+        eps_signal = tp / n_signal if n_signal > 0 else 0.0
+        eps_background = fp / n_background if n_background > 0 else 0.0
+        efficiencies[name] = (eps_signal, eps_background)
+    return efficiencies
+
+
 def _random_perturbation_for_numerical_stability() -> float:
     return np.random.normal(0, 1e-6)
 

@@ -44,7 +44,7 @@ class CalibrationConfig:
     ----------
     target : str
         Target variable for nonconformity score computation.
-        ``"mu"`` for signal strength, ``"n_pred"`` for event count.
+        ``"mu_hat"`` for signal strength, ``"n_pred"`` for event count.
     how : str
         Score computation method: ``"diff"`` or ``"abs"``.
     alpha : float
@@ -58,7 +58,7 @@ class CalibrationConfig:
         Persist calibration scores, quantiles, and plots.
     """
 
-    target: str = "mu"  # "mu" or "n_pred"
+    target: str = "mu_hat"  # "mu_hat" or "n_pred"
     how: str = "diff"  # "diff" or "abs"
     alpha: float = ONE_SIGMA_ALPHA
     ci_type: str = "asymmetric"  # "asymmetric" or "central"
@@ -148,7 +148,7 @@ class TrainingConfig:
 # Helpers for building CalibrationConfig from legacy fields
 # ---------------------------------------------------------------------------
 
-_TARGET_MAP = {"mu_hat": "mu", "n_pred": "n_pred"}
+_TARGET_MAP = {"mu_hat": "mu_hat", "mu": "mu_hat", "n_pred": "n_pred"}
 
 
 def _build_calibration_config(raw: dict) -> CalibrationConfig:
@@ -161,10 +161,13 @@ def _build_calibration_config(raw: dict) -> CalibrationConfig:
     if calib_raw and isinstance(calib_raw, dict):
         valid_keys = {f.name for f in fields(CalibrationConfig)}
         filtered = {k: v for k, v in calib_raw.items() if k in valid_keys}
+        # Normalise legacy "mu" → "mu_hat"
+        if "target" in filtered:
+            filtered["target"] = _TARGET_MAP.get(filtered["target"], filtered["target"])
         return CalibrationConfig(**filtered)
 
     # Legacy fallback
-    target = _TARGET_MAP.get(raw.get("nonconf_target", "mu_hat"), "mu")
+    target = _TARGET_MAP.get(raw.get("nonconf_target", "mu_hat"), "mu_hat")
     how = raw.get("nonconf_method", "diff")
     return CalibrationConfig(target=target, how=how)
 

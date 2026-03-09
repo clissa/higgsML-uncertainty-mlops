@@ -50,6 +50,7 @@ from conformal_predictions.data_viz import contourplot_data
 from conformal_predictions.evaluation.pseudoexperiments import evaluate_on_test_set
 from conformal_predictions.mlops.run_context import RunContext
 from conformal_predictions.training.core import (
+    compute_model_efficiencies,
     evaluate_models,
     get_events_count,
     list_split_files,
@@ -82,6 +83,7 @@ class Trainer:
         self._calib_data: Optional[List[Tuple[np.ndarray, np.ndarray]]] = None
         self._calib_meta: Optional[List[dict]] = None
         self._test_files: Optional[list] = None
+        self._ref_efficiencies: Optional[Dict[str, Tuple[float, float]]] = None
 
     # ------------------------------------------------------------------
     # Data loading
@@ -228,6 +230,15 @@ class Trainer:
                 f"{count} / {int(np.sum(y_val))} (true)"
             )
 
+        # Compute reference efficiencies from the validation set
+        self._ref_efficiencies = compute_model_efficiencies(
+            self.models, X_val_scaled, y_val, cfg.threshold
+        )
+        for name, (eps_s, eps_b) in self._ref_efficiencies.items():
+            print(
+                f"{name} reference efficiencies: eps_signal={eps_s:.4f}, eps_background={eps_b:.4f}"
+            )
+
     # ------------------------------------------------------------------
     # Stage 2: calibrate
     # ------------------------------------------------------------------
@@ -265,6 +276,14 @@ class Trainer:
         print(f"  target={calib_config.target}  how={calib_config.how}")
         print(f"  alpha={calib_config.alpha:.4f}  ci_type={calib_config.ci_type}")
 
+        # Average ref efficiencies across models (per-model support would
+        # require a refactor of run_calibration's API).
+        ref_efficiencies: Optional[Tuple[float, float]] = None
+        if self._ref_efficiencies:
+            avg_eps_s = float(np.mean([v[0] for v in self._ref_efficiencies.values()]))
+            avg_eps_b = float(np.mean([v[1] for v in self._ref_efficiencies.values()]))
+            ref_efficiencies = (avg_eps_s, avg_eps_b)
+
         result = run_calibration(
             self.models,
             self.scaler,
@@ -273,6 +292,7 @@ class Trainer:
             self.config.threshold,
             calib_config,
             output_dir=self.run_ctx.output_dir,
+            ref_efficiencies=ref_efficiencies,
         )
 
         for name, scores_arr in result.scores.items():
