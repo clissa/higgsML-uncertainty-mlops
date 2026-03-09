@@ -26,6 +26,7 @@ from dataclasses import replace
 
 from conformal_predictions.config import load_training_config
 from conformal_predictions.mlops.run_context import RunContext
+from conformal_predictions.mlops.tracker import Tracker
 from conformal_predictions.training.trainer import Trainer
 
 VALID_MODES = ("train", "calibrate", "evaluate", "train+calibrate", "all")
@@ -96,8 +97,12 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Git commit: {ctx.git_commit or 'N/A'}")
     print(f"Mode: {args.mode}")
 
+    # ---- start tracker ----
+    tracker = Tracker(ctx, cfg.tracking)
+    tracker.start(cfg.to_dict())
+
     # ---- build trainer ----
-    trainer = Trainer(cfg, ctx)
+    trainer = Trainer(cfg, ctx, tracker=tracker)
 
     mode = args.mode
 
@@ -119,6 +124,10 @@ def main(argv: list[str] | None = None) -> None:
         cal = trainer.calibrate()
         trainer.evaluate(calibration_result=cal)
         ctx.save_metadata()
+
+    tracker.finish()
+    # Re-write the manifest so it includes metrics.json (registered by tracker.finish)
+    ctx.save_manifest()
 
     print("\nDone.")
 

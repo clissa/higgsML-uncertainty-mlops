@@ -57,6 +57,12 @@ from conformal_predictions.training.core import (
 )
 from conformal_predictions.training.models import build_default_models
 
+# Optional tracker import (Phase 3)
+try:
+    from conformal_predictions.mlops.tracker import Tracker as _Tracker
+except ImportError:
+    _Tracker = None  # type: ignore[assignment,misc]
+
 
 class Trainer:
     """Config-driven training orchestrator.
@@ -67,11 +73,20 @@ class Trainer:
         Frozen training configuration.
     run_ctx : RunContext
         Run metadata & output directories.
+    tracker : Tracker, optional
+        Metric tracker (Phase 3).  When provided, scalar metrics from
+        all stages are forwarded to it.
     """
 
-    def __init__(self, config: TrainingConfig, run_ctx: RunContext) -> None:
+    def __init__(
+        self,
+        config: TrainingConfig,
+        run_ctx: RunContext,
+        tracker: Optional[object] = None,
+    ) -> None:
         self.config = config
         self.run_ctx = run_ctx
+        self.tracker = tracker
         self.models: Dict[str, object] = {}
         self.scaler: Optional[StandardScaler] = None
 
@@ -222,6 +237,14 @@ class Trainer:
                 f"\tRecall: {m['recall']:.4f}"
                 f"\tF1: {m['f1']:.4f}"
             )
+            if self.tracker is not None:
+                for metric_name, value in m.items():
+                    if isinstance(value, (int, float)):
+                        self.tracker.log(
+                            f"{name}.val_{metric_name}",
+                            float(value),
+                            stage="train",
+                        )
 
         counts = get_events_count(self.models, X_val_scaled, cfg.threshold)
         for name, count in counts.items():
@@ -293,16 +316,23 @@ class Trainer:
             calib_config,
             output_dir=self.run_ctx.output_dir,
             ref_efficiencies=ref_efficiencies,
+            ctx=self.run_ctx,
         )
 
         for name, scores_arr in result.scores.items():
             mu = float(np.mean(scores_arr)) if len(scores_arr) else float("nan")
             sd = float(np.std(scores_arr)) if len(scores_arr) else float("nan")
             print(f"  {name} score stats: mean={mu:.4f} ± std={sd:.4f}")
+            if self.tracker is not None:
+                self.tracker.log(f"{name}.calib_score_mean", mu, stage="calibrate")
+                self.tracker.log(f"{name}.calib_score_std", sd, stage="calibrate")
 
         if result.quantiles:
             for name, (ql, qh) in result.quantiles.items():
                 print(f"  {name} quantiles: q_low={ql:.4f}  q_high={qh:.4f}")
+                if self.tracker is not None:
+                    self.tracker.log(f"{name}.q_low", ql, stage="calibrate")
+                    self.tracker.log(f"{name}.q_high", qh, stage="calibrate")
 
         return result
 
@@ -357,6 +387,7 @@ class Trainer:
             eval_config=eval_config,
             calibration_result=calibration_result,
             output_dir=self.run_ctx.output_dir,
+            ctx=self.run_ctx,
         )
 
         for name, res in results.items():
@@ -374,6 +405,21 @@ class Trainer:
                     f"  width={cal.get('width', 0):.4f}"
                     f"  ci_score={cal.get('ci_score', 0):.4f}"
                 )
+            if self.tracker is not None:
+                for metric_name, value in perf.items():
+                    if isinstance(value, (int, float)):
+                        self.tracker.log(
+                            f"{name}.{metric_name}",
+                            float(value),
+                            stage="evaluate",
+                        )
+                for metric_name, value in cal.items():
+                    if isinstance(value, (int, float)):
+                        self.tracker.log(
+                            f"{name}.calib_{metric_name}",
+                            float(value),
+                            stage="evaluate",
+                        )
 
         return results
 

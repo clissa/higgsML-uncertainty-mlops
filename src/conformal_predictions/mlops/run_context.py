@@ -58,6 +58,8 @@ class RunContext:
         Git commit hash at the time of the run.
     output_dir : Path
         Root directory for all run artifacts.
+    artifacts : list
+        Registry of saved files populated by :meth:`save_artifact`.
     """
 
     run_id: str = ""
@@ -68,8 +70,8 @@ class RunContext:
     git_commit: Optional[str] = None
     output_dir: Path = Path("results")
 
-    # TODO Phase 3: Add tracking integration (wandb.init, log config, etc.)
-    # TODO Phase 3: Add artifact manifest (list of saved files with types).
+    # Phase 3: Artifact manifest — mutable registry of saved files.
+    artifacts: list = field(default_factory=list, compare=False)
 
     @classmethod
     def create(
@@ -109,10 +111,51 @@ class RunContext:
         self.plots_dir.mkdir(parents=True, exist_ok=True)
         self.stats_dir.mkdir(parents=True, exist_ok=True)
 
-    def save_metadata(self, path: Optional[Path] = None) -> Path:
-        """Persist run metadata as JSON.
+    def save_artifact(
+        self,
+        path: "str | Path",
+        type: str,
+        format: str,
+        description: str = "",
+    ) -> None:
+        """Register a saved file in the artifact manifest.
+
+        Parameters
+        ----------
+        path :
+            Path **relative** to ``output_dir``.
+        type :
+            Category e.g. ``"metric"``, ``"plot"``, ``"calibration"``,
+            ``"model"``, ``"scores"``.
+        format :
+            File format e.g. ``"json"``, ``"csv"``, ``"npz"``, ``"png"``.
+        description :
+            Short human-readable description.
+        """
+        self.artifacts.append(
+            {
+                "path": str(path),
+                "type": type,
+                "format": format,
+                "description": description,
+            }
+        )
+
+    def save_manifest(self, path: Optional[Path] = None) -> Path:
+        """Persist the artifact manifest as JSON.
 
         Returns the path to the written file.
+        """
+        path = path or (self.output_dir / "artifact_manifest.json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as fh:
+            json.dump({"run_id": self.run_id, "artifacts": self.artifacts}, fh, indent=2)
+        return path
+
+    def save_metadata(self, path: Optional[Path] = None) -> Path:
+        """Persist run metadata as JSON and write the artifact manifest.
+
+        Returns the path to the written metadata file.
         """
         path = path or (self.output_dir / "run_metadata.json")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -127,4 +170,6 @@ class RunContext:
         }
         with open(path, "w") as fh:
             json.dump(payload, fh, indent=2)
+        # Always write the artifact manifest alongside run_metadata.json
+        self.save_manifest()
         return path

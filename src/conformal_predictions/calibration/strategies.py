@@ -10,11 +10,14 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
+
+if TYPE_CHECKING:
+    from conformal_predictions.mlops.run_context import RunContext
 
 from conformal_predictions.calibration.intervals import (
     extract_quantiles,
@@ -66,6 +69,7 @@ def run_calibration(
     calib_config: CalibrationConfig,
     output_dir: Optional[Path] = None,
     ref_efficiencies: Optional[Sequence[float]] = None,
+    ctx: Optional["RunContext"] = None,
 ) -> CalibrationResult:
     """Execute the full calibration pipeline.
 
@@ -134,22 +138,51 @@ def run_calibration(
         stats_dir.mkdir(parents=True, exist_ok=True)
         plots_dir.mkdir(parents=True, exist_ok=True)
 
+        scores_filename = f"{calib_config.target}_nonconf_scores.npz"
         save_scores(
             raw_scores,
             stats_dir,
-            filename=f"{calib_config.target}_nonconf_scores.npz",
+            filename=scores_filename,
         )
+        if ctx is not None:
+            ctx.save_artifact(
+                f"stats/{scores_filename}",
+                type="calibration",
+                format="npz",
+                description="Nonconformity scores (calibration set)",
+            )
+            csv_name = scores_filename.replace(".npz", "_distribution.csv")
+            ctx.save_artifact(
+                f"stats/{csv_name}",
+                type="calibration",
+                format="csv",
+                description="Nonconformity score histogram (calibration set)",
+            )
 
         np.savez(
             stats_dir / "mu_hat_calib_distribution.npz",
             **{n: np.array(v) for n, v in mu_hat.items()},
         )
+        if ctx is not None:
+            ctx.save_artifact(
+                "stats/mu_hat_calib_distribution.npz",
+                type="calibration",
+                format="npz",
+                description="mu_hat calibration distribution",
+            )
 
         if mu_hat_stats:
             df_stats = pd.DataFrame(
                 [{"Model": n, **mu_hat_stats[n]} for n in mu_hat_stats]
             )
             df_stats.to_csv(stats_dir / "mu_hat_calibration_stats.csv", index=False)
+            if ctx is not None:
+                ctx.save_artifact(
+                    "stats/mu_hat_calibration_stats.csv",
+                    type="calibration",
+                    format="csv",
+                    description="mu_hat calibration summary statistics per model",
+                )
 
         save_quantiles(
             result.quantiles,
@@ -158,6 +191,13 @@ def run_calibration(
             calib_config.how,
             stats_dir,
         )
+        if ctx is not None:
+            ctx.save_artifact(
+                "stats/calibration_quantiles.csv",
+                type="calibration",
+                format="csv",
+                description="Conformal quantiles per model",
+            )
 
         # Summary JSON
         summary = {
@@ -172,6 +212,13 @@ def run_calibration(
             summary[f"{name}_score_std"] = float(np.std(scores_arr))
         with open(stats_dir / "calibration_summary.json", "w") as fh:
             json.dump(summary, fh, indent=2)
+        if ctx is not None:
+            ctx.save_artifact(
+                "stats/calibration_summary.json",
+                type="calibration",
+                format="json",
+                description="Calibration run summary (alpha, quantiles, score stats)",
+            )
 
         # Plots
         plot_nonconformity_scores(
@@ -179,7 +226,30 @@ def run_calibration(
             scores_label=calib_config.target,
             output_dir=plots_dir,
         )
+        if ctx is not None:
+            for model_name in models:
+                ctx.save_artifact(
+                    f"plots/{calib_config.target}_scores_distribution_{model_name}.png",
+                    type="plot",
+                    format="png",
+                    description=f"Nonconformity score distribution — {model_name}",
+                )
+            ctx.save_artifact(
+                f"plots/{calib_config.target}_scores_distribution_comparison.png",
+                type="plot",
+                format="png",
+                description="Nonconformity score distribution comparison across models",
+            )
+
         if mu_hat and mu_hat_stats:
             plot_mu_hat_distribution(mu_hat, mu_hat_stats, output_dir=plots_dir)
+            if ctx is not None:
+                for model_name in models:
+                    ctx.save_artifact(
+                        f"plots/mu_hat_distribution_{model_name}.png",
+                        type="plot",
+                        format="png",
+                        description=f"mu_hat calibration distribution — {model_name}",
+                    )
 
     return result

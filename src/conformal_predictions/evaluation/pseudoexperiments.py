@@ -8,13 +8,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import f1_score, precision_score, recall_score
 from sklearn.preprocessing import StandardScaler
 from tqdm.auto import tqdm
+
+if TYPE_CHECKING:
+    from conformal_predictions.mlops.run_context import RunContext
 
 from conformal_predictions.calibration.intervals import compute_confidence_interval
 from conformal_predictions.calibration.strategies import CalibrationResult
@@ -113,6 +116,7 @@ def evaluate_on_test_set(
     calibration_result: Optional[CalibrationResult] = None,
     output_dir: Optional[Path] = None,
     ref_efficiencies_dict: Optional[Dict[str, Sequence[float]]] = None,
+    ctx: Optional["RunContext"] = None,
 ) -> Dict[str, dict]:
     """Full evaluation: inference → CIs → performance + calibration metrics.
 
@@ -209,6 +213,16 @@ def evaluate_on_test_set(
                     calib_metrics["coverage"],
                     output_dir=stats_dir,
                 )
+                if ctx is not None:
+                    import datetime as _dt
+
+                    plot_id = _dt.date.today().strftime("%Y%m%d")
+                    ctx.save_artifact(
+                        f"stats/test_CI_plots-{plot_id}_{model_name}.png",
+                        type="plot",
+                        format="png",
+                        description=f"Confidence interval plot — {model_name}",
+                    )
 
                 # CI table
                 ci_df = pd.DataFrame(
@@ -225,6 +239,13 @@ def evaluate_on_test_set(
                     stats_dir / f"confidence_intervals_{model_name}.csv",
                     index=False,
                 )
+                if ctx is not None:
+                    ctx.save_artifact(
+                        f"stats/confidence_intervals_{model_name}.csv",
+                        type="scores",
+                        format="csv",
+                        description=f"Confidence intervals per experiment — {model_name}",
+                    )
 
         results[model_name] = entry
 
@@ -240,6 +261,13 @@ def evaluate_on_test_set(
         }
         with open(stats_dir / "performance_metrics.json", "w") as fh:
             json.dump(perf_out, fh, indent=2)
+        if ctx is not None:
+            ctx.save_artifact(
+                "stats/performance_metrics.json",
+                type="metric",
+                format="json",
+                description="Aggregate classification metrics on test set",
+            )
 
         calib_out = {
             name: results[name]["calibration"]
@@ -249,5 +277,12 @@ def evaluate_on_test_set(
         if calib_out:
             with open(stats_dir / "calibration_metrics.json", "w") as fh:
                 json.dump(calib_out, fh, indent=2)
+            if ctx is not None:
+                ctx.save_artifact(
+                    "stats/calibration_metrics.json",
+                    type="metric",
+                    format="json",
+                    description="Calibration quality metrics (coverage, width, ci_score)",
+                )
 
     return results

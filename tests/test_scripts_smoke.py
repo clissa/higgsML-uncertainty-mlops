@@ -343,7 +343,7 @@ def test_run_train_command_smoke(tmp_path, monkeypatch):
 
     # Replace Trainer with a lightweight mock that doesn't need real data
     class _MockTrainer:
-        def __init__(self, config, run_ctx):
+        def __init__(self, config, run_ctx, tracker=None):
             self.config = config
             self.run_ctx = run_ctx
 

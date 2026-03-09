@@ -101,6 +101,34 @@ class EvaluationConfig:
 
 
 @dataclass(frozen=True)
+class TrackingConfig:
+    """Configuration for run tracking and artifact management.
+
+    Parameters
+    ----------
+    enabled : bool
+        Enable local artifact manifest and run index.
+    wandb_enabled : bool
+        Enable wandb integration (requires ``wandb`` to be installed).
+    wandb_project : str
+        wandb project name.
+    wandb_entity : str | None
+        wandb entity (team/user).  Defaults to the wandb default entity.
+    index_path : str
+        Path to the local run index JSON file.
+    """
+
+    enabled: bool = True
+    wandb_enabled: bool = False
+    wandb_project: str = "higgsML-uncertainty"
+    wandb_entity: Optional[str] = None
+    index_path: str = "results/runs_index.json"
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class TrainingConfig:
     """Frozen configuration for a training run.
 
@@ -137,6 +165,9 @@ class TrainingConfig:
     # --- optional sub-configs (Phase 2) ---
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
     evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
+
+    # --- tracking (Phase 3) ---
+    tracking: TrackingConfig = field(default_factory=TrackingConfig)
 
     def to_dict(self) -> dict:
         """Serialise to a plain dict (for JSON / run-context snapshots)."""
@@ -184,6 +215,16 @@ def _build_evaluation_config(raw: dict) -> EvaluationConfig:
     return EvaluationConfig()
 
 
+def _build_tracking_config(raw: dict) -> "TrackingConfig":
+    """Build a ``TrackingConfig`` from a YAML ``tracking:`` section."""
+    tracking_raw = raw.get("tracking")
+    if tracking_raw and isinstance(tracking_raw, dict):
+        valid_keys = {f.name for f in fields(TrackingConfig)}
+        filtered = {k: v for k, v in tracking_raw.items() if k in valid_keys}
+        return TrackingConfig(**filtered)
+    return TrackingConfig()
+
+
 # ---------------------------------------------------------------------------
 # Public loader
 # ---------------------------------------------------------------------------
@@ -206,6 +247,7 @@ def load_training_config(path: str | Path) -> TrainingConfig:
     valid_keys = {f.name for f in fields(TrainingConfig)} - {
         "calibration",
         "evaluation",
+        "tracking",
     }
     filtered = {k: v for k, v in raw.items() if k in valid_keys}
 
@@ -216,5 +258,6 @@ def load_training_config(path: str | Path) -> TrainingConfig:
     # Sub-configs
     filtered["calibration"] = _build_calibration_config(raw)
     filtered["evaluation"] = _build_evaluation_config(raw)
+    filtered["tracking"] = _build_tracking_config(raw)
 
     return TrainingConfig(**filtered)

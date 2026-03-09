@@ -42,3 +42,10 @@ evaluation:
   save_artifacts: true
   ci_score_lambda: 1.0
   ci_score_epsilon: 1.0e-6
+
+# --- Phase 3: Tracking ---
+tracking:
+  enabled: true
+  wandb_enabled: false
+  wandb_project: "higgsML-uncertainty"
+  index_path: "results/runs_index.json"
