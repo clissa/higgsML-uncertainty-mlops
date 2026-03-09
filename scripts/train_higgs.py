@@ -37,7 +37,9 @@ from conformal_predictions.training import (
 HOW = "abs"  # method for computing nonconformity scores: "diff" or "abs"
 FIT_PARALLEL = False  # whether to fit models in parallel using joblib
 PRED_FORMULA = r"$\hat{\mu} = \frac{n_{pred} - \epsilon_{bkg}\beta^*_{true}}{\epsilon_{sig}\gamma^*_{true}}$"  # should match training._compute_mu_hat logic; used in plot_mu_hat_distribution titles
-OUTPUT_DIRNAME = "higgs-sequential-q16q84-10train-10valid-10ref-10calib-10test"
+# OUTPUT_DIRNAME = "test-bugfix"
+# OUTPUT_DIRNAME = "higgs-sequential-q16q84-10train-10valid-10ref-10calib-10test"
+OUTPUT_DIRNAME = "higgs-sequential-q68-10train-10valid-10ref-10calib-10test"
 ### END OF MANUAL CONFIGURATION     ###
 
 PLOTS_DIR = Path("results") / OUTPUT_DIRNAME / "plots"
@@ -432,16 +434,19 @@ def main() -> None:
         f"Average calibration sample size: {int(np.array([_[0].shape[0] for _ in calib_data]).mean())} observations"
     )
     print(f"\t...using {cfg.nonconf_target} as target for nonconformity scores")
-    nonconf_scores = compute_nonconformity_scores(
-        models,
-        scaler,
-        calib_data,
-        calib_meta,
-        cfg.threshold,
-        target=cfg.nonconf_target,
-        how=HOW,
-        ref_efficiencies=ref_efficiencies_dict.get(model_name, (1.0, 1.0)),
-    )
+    nonconf_scores = {}
+    for model_name, model in models.items():
+        model_scores = compute_nonconformity_scores(
+            {model_name: model},
+            scaler,
+            calib_data,
+            calib_meta,
+            cfg.threshold,
+            target=cfg.nonconf_target,
+            how=HOW,
+            ref_efficiencies=ref_efficiencies_dict.get(model_name, (1.0, 1.0)),
+        )
+        nonconf_scores[model_name] = model_scores[model_name]
 
     for model_name, values in nonconf_scores.items():
         mean_score = np.mean(values) if values else float("nan")
@@ -455,14 +460,21 @@ def main() -> None:
     )
 
     print("\nComputing mu_hat...")
-    mu_hat, stats = compute_mu_hat(
-        models,
-        scaler,
-        calib_data,
-        calib_meta,
-        cfg.threshold,
-        ref_efficiencies=ref_efficiencies_dict.get(model_name, (1.0, 1.0)),
-    )
+
+    mu_hat = {}
+    stats = {}
+    for model_name, model in models.items():
+        model_mu_hat, model_stats = compute_mu_hat(
+            {model_name: model},
+            scaler,
+            calib_data,
+            calib_meta,
+            cfg.threshold,
+            ref_efficiencies=ref_efficiencies_dict.get(model_name, (1.0, 1.0)),
+        )
+        mu_hat[model_name] = model_mu_hat[model_name]
+        if model_name in model_stats:
+            stats[model_name] = model_stats[model_name]
     np.savez(
         STATS_DIR / "mu_hat_calib_distribution.npz",
         **{model_name: np.array(scores) for model_name, scores in mu_hat.items()},
