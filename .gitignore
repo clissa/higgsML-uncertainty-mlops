@@ -13,8 +13,12 @@ venv*/
 results/
 outputs/
 logs/
+
+# Copilot agent instructions and task logs
 .github/
 tasks/
+docs/copilot_workplan.md
+docs/prompts_template.md
 
 # Data
 data/raw/
