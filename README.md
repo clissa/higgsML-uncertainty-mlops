@@ -1,135 +1,68 @@
-# Conformal Predictions for Signal Strength Estimation
+# MLOps pipeline for HiggsML Uncertainty Challenge
 
-This repository contains a proof-of-concept (PoC) and evolving framework for
-**uncertainty quantification via Conformal Prediction (CP)** in scientific
-machine learning applications, with a focus on **signal strength estimation**
-in classification-based analyses.
+## Overview
 
-The project is developed with two main goals:
-1. **Methodological**: study how conformal prediction intervals at the event
-   level can be propagated to global quantities such as signal strength, and
-   assess their empirical coverage.
-2. **Engineering / MLOps**: provide a clean, reproducible, and extensible
-   pipeline suitable for scientific workflows and future large-scale studies
-   (e.g. Higgs ML challenge–like datasets).
+This repository develops an **MLOps-oriented pipeline** for experiments
+related to the **HiggsML Uncertainty Challenge**.
 
----
+The goal of the project is to build a **reproducible and well-structured
+machine learning workflow** for a scientific analysis scenario inspired
+by high‑energy physics.\
+In particular, the pipeline aims to support experimentation around:
 
-## Project status
+-   classification of signal vs background collision events
+-   estimation of signal strength uncertainty
+-   construction and evaluation of conformal prediction intervals
+-   systematic comparison of models and experimental configurations
 
-🚧 **Work in progress**
+The emphasis of this repository is **methodology and reproducibility**
+rather than raw model performance.\
+The project focuses on demonstrating how modern **MLOps practices** can
+be applied to a scientific machine learning workflow.
 
-The current focus is on a **toy-model PoC** used to validate the methodology
-in a fully controlled setting.  
-Extensions to realistic datasets (e.g. Higgs ML benchmarks) will follow.
+The pipeline will progressively introduce components such as:
 
+-   configuration‑driven experiments
+-   artifact and experiment tracking
+-   reproducible data splits and pseudo‑experiments
+-   structured evaluation outputs
+-   lightweight model lineage and registry concepts
 
-## Repository structure
+This repository is intended primarily as a **research and
+experimentation environment**, not as a production system.
 
-The repository is organized to clearly separate:
-- reusable core code,
-- experiment orchestration,
-- configuration,
-- data and results.
+------------------------------------------------------------------------
 
-Intended initial structure is anticipated as follows (implementation ongoing):
+## Relation to `conformal-predictions`
 
-```
-conformal-predictions/
-├── src/conformal_predictions/ # Core reusable library
-│ ├── data/
-│ │ ├── toy.py # Toy data generator
-│ │ └── higgs.py # (stub) Higgs-specific loaders/preprocessing
-│ ├── models.py # (stub) ML model wrappers
-│ ├── conformal.py # (stub) conformal prediction logic
-│ ├── signal_strength.py # (stub) aggregation to signal strength
-│ ├── metrics.py # (stub) coverage and evaluation utilities
-│ └── viz.py # (stub) plotting utilities
-│
-├── scripts/ # Experiment entry points
-├── configs/ # YAML configuration files
-├── notebooks/ # Exploratory notebooks
-├── data/ # Small tracked datasets / examples
-├── results/ # Experiment outputs (not tracked)
-│
-├── pyproject.toml # Packaging and tool configuration
-├── requirements.txt
-└── README.md
-```
+This project is built as an extension of the following repository:
 
+**conformal-predictions**
 
-## Installation
+https://github.com/clissa/conformal-predictions
 
-The project uses a standard Python virtual environment.
+That repository provides the initial **proof‑of‑concept implementation
+of conformal prediction methods** used in this project.
 
-```bash
-python3 -m venv venv-cp
-source venv-cp/bin/activate
-pip install -r requirements.txt
-pip install -e .
-```
+The present repository builds on that work by:
 
-### Quick sanity check
-After installation, you can veify that the toy data generator works using:
+-   extending the experimental workflow
+-   restructuring parts of the codebase
+-   adding reproducibility and experiment management features
+-   integrating a lightweight MLOps-oriented structure
 
-```bash
-python - <<EOF
-from conformal_predictions.data.toy import make_default_toy_config, generate_toy_dataset
+The scientific logic and early experimentation framework originate from
+the original repository, while this project focuses on evolving the
+workflow into a **more structured and reproducible experimentation
+pipeline**.
 
-cfg = make_default_toy_config(random_state=42)
-X, y, meta = generate_toy_dataset(cfg)
+------------------------------------------------------------------------
 
-print(X.shape)
-print(meta)
-EOF
-```
+## Status
 
-## Usage
+This repository is currently in **active development**.
 
-Scripts in `scripts/` are the main entry points for data generation and toy
-training. Run them from the repository root after installing dependencies.
-
-Generate a single pseudo-experiment from a YAML config:
-
-```bash
-python scripts/generate_one_experiment.py --config configs/toy_default.yaml --outdir data/toy_pseudo-experiment
-```
-
-Generate multiple pseudo-experiments (optionally in parallel):
-
-```bash
-python scripts/generate_experiments.py --config configs/toy_default.yaml --outdir data/toy_scale --n-experiments 10 --n-workers 4
-```
-
-Run the toy training and conformal workflow:
-
-```bash
-python scripts/train.py
-```
-
-`scripts/train.py` currently reads settings from the `Settings` dataclass and
-`OUTPUT_DIRNAME` near the top of the file; it expects toy data under
-`data/toy_scale_easy` and writes outputs to `results/<OUTPUT_DIRNAME>/`.
-
-## Planned extensions
-
-The following components will be developed incrementally:
-
-- support yaml train config
-
-- add soft counting alternative: $n_{\text{pred}} = \sum_i p_{\text{pred}_i}$ instead of $\sum_i \mathbb{1}(p_{\text{pred}_i} > \text{threshold})$
-
-- add plottings of CI VS mu_true values on test pseudo-experiments
-
-- refactoring: modularize train.py offloading reusable utils into
-  src/conformal_predictions submodules
-
-- comparison with alternative uncertainty estimation methods
-
-- integration with realistic physics datasets
-
-- experiment tracking and MLOps tooling
-
-## License
-
-This project is released under the MIT License.
+The initial goal is to incrementally transform the existing
+proof‑of‑concept into a **clear, reproducible experimentation pipeline**
+suitable for demonstrating MLOps practices in a scientific machine
+learning context.
