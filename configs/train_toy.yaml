@@ -1,8 +1,8 @@
 # Training config for the toy (pseudo-experiment) pipeline.
-# Mirrors the hardcoded Settings in scripts/train.py.
 #
 # Usage:
 #   python scripts/run_train.py --config configs/train_toy.yaml
+#   python scripts/run_train.py --config configs/train_toy.yaml --mode train
 
 dataset: toy
 data_dir: data/toy_scale_easy
@@ -18,8 +18,27 @@ calib_size: 0.5
 
 # Model / inference
 threshold: 0.5
+
+# Legacy fields (kept for backward compat with scripts/train.py)
 nonconf_target: mu_hat     # "mu_hat" or "n_pred"
 nonconf_method: diff        # "diff" or "abs"
 
 # Output
 output_dir: results
+
+# --- Phase 2: Calibration ---
+calibration:
+  target: mu            # "mu" for signal strength, "n_pred" for event count
+  how: diff             # "diff" or "abs"
+  alpha: 0.3173         # significance level (~1-sigma)
+  ci_type: asymmetric   # "asymmetric" or "central"
+  enabled: true
+  save_artifacts: true
+
+# --- Phase 2: Evaluation ---
+evaluation:
+  metrics: [loss, accuracy, precision, recall, f1, pr_auc, roc_auc]
+  enabled: true
+  save_artifacts: true
+  ci_score_lambda: 1.0
+  ci_score_epsilon: 1.0e-6

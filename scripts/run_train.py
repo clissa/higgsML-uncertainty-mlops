@@ -1,37 +1,55 @@
 #!/usr/bin/env python
-"""Config-driven training entrypoint.
+"""Config-driven pipeline entrypoint with selectable execution modes.
 
 Usage::
 
+    # Full pipeline (default)
     python scripts/run_train.py --config configs/train_toy.yaml
-    python scripts/run_train.py --config configs/train_toy.yaml --seed 42
-    python scripts/run_train.py --config configs/train_toy.yaml --output-dir /tmp/results
-    python scripts/run_train.py --config configs/train_toy.yaml --run-name my-experiment
 
-This replaces the older ``scripts/train.py`` hard-coded flow with a
-YAML-driven pipeline that also records run metadata for reproducibility.
+    # Train only
+    python scripts/run_train.py --config configs/train_toy.yaml --mode train
+
+    # Train + calibrate (no test evaluation)
+    python scripts/run_train.py --config configs/train_toy.yaml --mode train+calibrate
+
+    # All three stages
+    python scripts/run_train.py --config configs/train_toy.yaml --mode all
+
+CLI overrides (--seed, --output-dir, --run-name) are applied on top of
+the YAML config.
 """
 
 from __future__ import annotations
 
 import argparse
-import sys
 from dataclasses import replace
 
-from conformal_predictions.config import TrainingConfig, load_training_config
+from conformal_predictions.config import load_training_config
 from conformal_predictions.mlops.run_context import RunContext
 from conformal_predictions.training.trainer import Trainer
+
+VALID_MODES = ("train", "calibrate", "evaluate", "train+calibrate", "all")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run the conformal-prediction training pipeline."
+        description="Run the conformal-prediction pipeline.",
     )
     parser.add_argument(
         "--config",
         type=str,
         required=True,
         help="Path to a training YAML config file.",
+    )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="all",
+        choices=VALID_MODES,
+        help=(
+            "Execution mode.  'all' (default) runs train → calibrate → "
+            "evaluate.  Individual stages can be selected."
+        ),
     )
     parser.add_argument(
         "--seed",
@@ -76,10 +94,31 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Run ID: {ctx.run_id}")
     print(f"Output: {ctx.output_dir}")
     print(f"Git commit: {ctx.git_commit or 'N/A'}")
+    print(f"Mode: {args.mode}")
 
-    # ---- run training ----
+    # ---- build trainer ----
     trainer = Trainer(cfg, ctx)
-    trainer.run()
+
+    mode = args.mode
+
+    if mode == "all":
+        trainer.run()
+    elif mode == "train":
+        trainer.train()
+        ctx.save_metadata()
+    elif mode == "calibrate":
+        trainer.train()
+        trainer.calibrate()
+        ctx.save_metadata()
+    elif mode == "train+calibrate":
+        trainer.train()
+        trainer.calibrate()
+        ctx.save_metadata()
+    elif mode == "evaluate":
+        trainer.train()
+        cal = trainer.calibrate()
+        trainer.evaluate(calibration_result=cal)
+        ctx.save_metadata()
 
     print("\nDone.")
 

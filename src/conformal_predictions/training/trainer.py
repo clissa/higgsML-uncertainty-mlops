@@ -1,11 +1,14 @@
-"""Reusable training orchestrator for the toy conformal-prediction pipeline.
+"""Reusable training orchestrator for the conformal-prediction pipeline.
 
-The ``Trainer`` class encapsulates the full train → evaluate →
-nonconformity → confidence-interval flow that was previously baked into
-``scripts/train.py#main()``.  Scientific computation is delegated to
-the pure functions in ``conformal_predictions.training.core``; the
-``Trainer`` is a *thin* stateful wrapper that wires everything together
-and writes artifacts into the run-context output directory.
+The ``Trainer`` class exposes three composable stages:
+
+1. :meth:`train` — data loading, scaling, fitting.
+2. :meth:`calibrate` — nonconformity scores, quantiles, and CI construction.
+3. :meth:`evaluate` — test inference, classification metrics, calibration
+   quality metrics.
+
+Each stage can be invoked independently.  :meth:`run` chains all three
+for convenience and backward compatibility.
 
 Usage::
 
@@ -18,44 +21,44 @@ Usage::
     trainer = Trainer(cfg, ctx)
     trainer.run()
 
-TODO Phase 1b: Extend to Higgs pipeline via a pluggable data-loader
-interface (load_data returns the same structured tuple; only the
-reading logic differs).
+    # Or individually:
+    trainer.train()
+    cal_result = trainer.calibrate()
+    eval_results = trainer.evaluate(calibration_result=cal_result)
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from tqdm.auto import tqdm
 
-from conformal_predictions.config import TrainingConfig
-from conformal_predictions.data.toy import load_pseudo_experiment
-from conformal_predictions.data_viz import (
-    contourplot_data,
-    plot_confidence_intervals,
-    plot_mu_hat_distribution,
-    plot_nonconformity_scores,
+from conformal_predictions.calibration.strategies import (
+    CalibrationResult,
+    run_calibration,
 )
+from conformal_predictions.config import (
+    CalibrationConfig,
+    EvaluationConfig,
+    TrainingConfig,
+)
+from conformal_predictions.data.toy import load_pseudo_experiment
+from conformal_predictions.data_viz import contourplot_data
+from conformal_predictions.evaluation.pseudoexperiments import evaluate_on_test_set
 from conformal_predictions.mlops.run_context import RunContext
 from conformal_predictions.training.core import (
-    compute_confidence_interval,
-    compute_mu_hat,
-    compute_nonconformity_scores,
     evaluate_models,
     get_events_count,
-    inference_on_test_set,
     list_split_files,
 )
 from conformal_predictions.training.models import build_default_models
 
 
 class Trainer:
-    """Config-driven training orchestrator (toy pipeline).
+    """Config-driven training orchestrator.
 
     Parameters
     ----------
@@ -70,6 +73,15 @@ class Trainer:
         self.run_ctx = run_ctx
         self.models: Dict[str, object] = {}
         self.scaler: Optional[StandardScaler] = None
+
+        # Populated by load_data / train
+        self._X_train: Optional[np.ndarray] = None
+        self._y_train: Optional[np.ndarray] = None
+        self._X_val: Optional[np.ndarray] = None
+        self._y_val: Optional[np.ndarray] = None
+        self._calib_data: Optional[List[Tuple[np.ndarray, np.ndarray]]] = None
+        self._calib_meta: Optional[List[dict]] = None
+        self._test_files: Optional[list] = None
 
     # ------------------------------------------------------------------
     # Data loading
@@ -143,18 +155,21 @@ class Trainer:
             model.fit(X_train, y_train)
 
     # ------------------------------------------------------------------
-    # Full pipeline
+    # Stage 1: train
     # ------------------------------------------------------------------
 
-    def run(self) -> None:
-        """Execute the full train → eval → nonconformity → CI pipeline."""
+    def train(self) -> None:
+        """Data loading, scaling, fitting, and validation evaluation.
+
+        After calling this method, ``self.models``, ``self.scaler``, and
+        the internal data splits are populated and available for
+        subsequent stages.
+        """
         cfg = self.config
         ctx = self.run_ctx
         ctx.ensure_dirs()
-
         np.random.seed(cfg.seed)
 
-        # ---- data ----
         X_train, y_train, X_val, y_val, calib_data, calib_meta, test_files = (
             self.load_data()
         )
@@ -162,6 +177,15 @@ class Trainer:
         self.scaler = StandardScaler()
         X_train_scaled = self.scaler.fit_transform(X_train)
         X_val_scaled = self.scaler.transform(X_val)
+
+        # Store for later stages
+        self._X_train = X_train_scaled
+        self._y_train = y_train
+        self._X_val = X_val_scaled
+        self._y_val = y_val
+        self._calib_data = calib_data
+        self._calib_meta = calib_meta
+        self._test_files = test_files
 
         print("Starting training on:")
         print(
@@ -186,7 +210,7 @@ class Trainer:
         # ---- fit ----
         self.fit(X_train_scaled, y_train)
 
-        # ---- evaluation ----
+        # ---- quick validation metrics ----
         perf = evaluate_models(self.models, X_val_scaled, y_val)
         for name, m in perf.items():
             print(f"\n\n{name} validation metrics:")
@@ -204,132 +228,155 @@ class Trainer:
                 f"{count} / {int(np.sum(y_val))} (true)"
             )
 
-        # ---- nonconformity scores ----
-        print("\nComputing nonconformity scores...")
-        print(f"{len(calib_data)} calibration samples")
-        print(
-            f"Average calibration sample size: "
-            f"{int(np.array([c[0].shape[0] for c in calib_data]).mean())} observations"
-        )
-        print(
-            f"\t...using {cfg.nonconf_target} as target for nonconformity scores"
-        )
-        nonconf_scores = compute_nonconformity_scores(
+    # ------------------------------------------------------------------
+    # Stage 2: calibrate
+    # ------------------------------------------------------------------
+
+    def calibrate(
+        self,
+        calib_config: Optional[CalibrationConfig] = None,
+    ) -> CalibrationResult:
+        """Run conformal calibration on the calibration set.
+
+        Parameters
+        ----------
+        calib_config : CalibrationConfig, optional
+            Overrides the config embedded in ``self.config.calibration``.
+
+        Returns
+        -------
+        CalibrationResult
+        """
+        if calib_config is None:
+            calib_config = self.config.calibration
+
+        if self.models is None or self.scaler is None:
+            raise RuntimeError(
+                "Models and scaler must be fitted before calibration. "
+                "Call trainer.train() first."
+            )
+        if self._calib_data is None:
+            raise RuntimeError(
+                "Calibration data not loaded. Call trainer.train() first."
+            )
+
+        print("\nRunning calibration...")
+        print(f"  {len(self._calib_data)} calibration experiments")
+        print(f"  target={calib_config.target}  how={calib_config.how}")
+        print(f"  alpha={calib_config.alpha:.4f}  ci_type={calib_config.ci_type}")
+
+        result = run_calibration(
             self.models,
             self.scaler,
-            calib_data,
-            calib_meta,
-            cfg.threshold,
-            target=cfg.nonconf_target,
-            how=cfg.nonconf_method,
+            self._calib_data,
+            self._calib_meta,
+            self.config.threshold,
+            calib_config,
+            output_dir=self.run_ctx.output_dir,
         )
 
-        for name, values in nonconf_scores.items():
-            mu = np.mean(values) if values else float("nan")
-            sd = np.std(values) if values else float("nan")
-            print(f"{name} nonconformity mu_hat stats: {mu:.4f} ± {sd:.4f}")
+        for name, scores_arr in result.scores.items():
+            mu = float(np.mean(scores_arr)) if len(scores_arr) else float("nan")
+            sd = float(np.std(scores_arr)) if len(scores_arr) else float("nan")
+            print(f"  {name} score stats: mean={mu:.4f} ± std={sd:.4f}")
 
-        plot_nonconformity_scores(
-            nonconf_scores,
-            scores_label=cfg.nonconf_target,
-            output_dir=ctx.plots_dir,
-        )
+        if result.quantiles:
+            for name, (ql, qh) in result.quantiles.items():
+                print(f"  {name} quantiles: q_low={ql:.4f}  q_high={qh:.4f}")
 
-        # ---- mu_hat on calibration set ----
-        print("\nComputing mu_hat...")
-        mu_hat, stats = compute_mu_hat(
-            self.models, self.scaler, calib_data, calib_meta, cfg.threshold
-        )
-        np.savez(
-            ctx.stats_dir / "mu_hat_calib_distribution.npz",
-            **{n: np.array(v) for n, v in mu_hat.items()},
-        )
-        np.savez(
-            ctx.stats_dir / f"{cfg.nonconf_target}_nonconf_scores.npz",
-            **{n: np.array(v) for n, v in nonconf_scores.items()},
-        )
+        return result
 
-        plot_mu_hat_distribution(mu_hat, stats, output_dir=ctx.plots_dir)
-        df_stats = pd.DataFrame(
-            [{"Model": n, **stats[n]} for n in stats]
-        )
-        print("\nStatistics Summary:")
-        print(df_stats)
-        df_stats.to_csv(ctx.stats_dir / "mu_hat_calibration_stats.csv", index=False)
+    # ------------------------------------------------------------------
+    # Stage 3: evaluate
+    # ------------------------------------------------------------------
 
-        # ---- inference on test set ----
-        print("\nRunning inference on test set...")
+    def evaluate(
+        self,
+        calibration_result: Optional[CalibrationResult] = None,
+        eval_config: Optional[EvaluationConfig] = None,
+    ) -> Dict[str, dict]:
+        """Evaluate on the test set.
+
+        Parameters
+        ----------
+        calibration_result : CalibrationResult, optional
+            When provided, confidence intervals and calibration quality
+            metrics are computed.
+        eval_config : EvaluationConfig, optional
+            Overrides ``self.config.evaluation``.
+
+        Returns
+        -------
+        dict
+            ``{model_name: {"performance": {...}, "calibration": {...}}}``
+        """
+        if eval_config is None:
+            eval_config = self.config.evaluation
+
+        if self.models is None or self.scaler is None:
+            raise RuntimeError(
+                "Models and scaler must be fitted before evaluation. "
+                "Call trainer.train() first."
+            )
+        if self._test_files is None:
+            raise RuntimeError("Test files not loaded. Call trainer.train() first.")
+
+        print("\nRunning evaluation on test set...")
+
         test_data = []
-        for fp in test_files:
+        for fp in self._test_files:
             X_t, y_t, meta_t = load_pseudo_experiment(fp)
             test_data.append((X_t, y_t, meta_t))
 
-        mu_hat_test, mu_true_list, gamma_true_list, test_metrics = (
-            inference_on_test_set(self.models, self.scaler, test_data, cfg.threshold)
+        results = evaluate_on_test_set(
+            self.models,
+            self.scaler,
+            test_data,
+            self.config.threshold,
+            calib_config=self.config.calibration,
+            eval_config=eval_config,
+            calibration_result=calibration_result,
+            output_dir=self.run_ctx.output_dir,
         )
 
-        # ---- confidence intervals ----
-        print("\nComputing confidence intervals for test set...")
-        print(
-            f"\t...using {cfg.nonconf_target} nonconformity scores for CI computation."
-        )
-        nonconf_scores_file = (
-            ctx.stats_dir / f"{cfg.nonconf_target}_nonconf_scores.npz"
-        )
-
-        for model_name, mu_hat_values in mu_hat_test.items():
-            if cfg.nonconf_target == "mu_hat":
-                lower, upper = compute_confidence_interval(
-                    np.array(mu_hat_values),
-                    nonconf_scores_file,
-                    model_name,
-                    how=cfg.nonconf_method,
-                )
-            elif cfg.nonconf_target == "n_pred":
-                n_preds = np.array(mu_hat_values) * np.array(gamma_true_list)
-                n_lower, n_upper = compute_confidence_interval(
-                    n_preds,
-                    nonconf_scores_file,
-                    model_name,
-                    how=cfg.nonconf_method,
-                )
-                lower = n_lower / np.array(gamma_true_list)
-                upper = n_upper / np.array(gamma_true_list)
-
-            print(f"\nModel: {model_name}\n")
-            empirical_coverage = np.mean(
-                [
-                    lo < mt < hi
-                    for lo, hi, mt in zip(lower, upper, mu_true_list)
+        for name, res in results.items():
+            perf = res.get("performance", {})
+            cal = res.get("calibration", {})
+            print(f"\n  {name}:")
+            if perf:
+                parts = [
+                    f"{k}={v:.4f}" for k, v in perf.items() if isinstance(v, float)
                 ]
-            )
-            print(f"Empirical coverage: {empirical_coverage*100:.2f}%")
-
-            plot_confidence_intervals(
-                mu_hat_values,
-                lower,
-                upper,
-                mu_true_list,
-                model_name,
-                empirical_coverage,
-                output_dir=ctx.stats_dir,
-            )
-
-            for i, (mh, lo, hi, mt) in enumerate(
-                zip(mu_hat_values, lower, upper, mu_true_list)
-            ):
-                if i % 50 != 0:
-                    continue
-                color = "\033[92m" if lo < mt < hi else "\033[91m"
-                reset = "\033[0m"
+                print(f"    performance: {', '.join(parts)}")
+            if cal:
                 print(
-                    f"  {color}Exp {i}: "
-                    f"\u03bc\u0302: {mh:.3f} "
-                    f"CI: [{lo:.3f}, {hi:.3f}] "
-                    f"\u03bc_true: {mt:.3f}{reset}"
+                    f"    coverage={cal.get('coverage', 0):.4f}"
+                    f"  width={cal.get('width', 0):.4f}"
+                    f"  ci_score={cal.get('ci_score', 0):.4f}"
                 )
-                print(test_metrics[model_name][i])
 
-        # ---- persist run metadata ----
-        meta_path = ctx.save_metadata()
+        return results
+
+    # ------------------------------------------------------------------
+    # Full pipeline (backward-compatible)
+    # ------------------------------------------------------------------
+
+    def run(self) -> None:
+        """Execute the full train → calibrate → evaluate pipeline.
+
+        This is the backward-compatible entry point that chains all three
+        stages.  Calibration and evaluation are skipped if their
+        respective ``enabled`` flags are ``False`` in the config.
+        """
+        self.train()
+
+        calibration_result = None
+        if self.config.calibration.enabled:
+            calibration_result = self.calibrate()
+
+        if self.config.evaluation.enabled:
+            self.evaluate(calibration_result=calibration_result)
+
+        # Persist run metadata
+        meta_path = self.run_ctx.save_metadata()
         print(f"\nRun metadata saved to {meta_path}")
