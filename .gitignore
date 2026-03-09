@@ -19,6 +19,7 @@ logs/
 tasks/
 docs/copilot_workplan.md
 docs/prompts_template.md
+docs/prompt_phase*
 
 # Data
 data/raw/
