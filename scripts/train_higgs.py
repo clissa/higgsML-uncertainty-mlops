@@ -1,3 +1,9 @@
+"""Training script for the HiggsML (parquet) pipeline.
+
+TODO Phase 1b: Refactor to use ``conformal_predictions.training.trainer.Trainer``
+with a pluggable data loader instead of the bespoke data-loading functions below.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

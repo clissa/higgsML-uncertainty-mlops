@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -316,3 +317,61 @@ def test_train_higgs_command_smoke(tmp_path, monkeypatch):
     assert (stats_dir / "mu_hat_calib_distribution.npz").exists()
     assert (stats_dir / "mu_hat_nonconf_scores.npz").exists()
     assert (stats_dir / "mu_hat_calibration_stats.csv").exists()
+
+
+# ------------------------------------------------------------------
+# run_train.py  (config-driven entrypoint)
+# ------------------------------------------------------------------
+
+
+def test_run_train_command_smoke(tmp_path, monkeypatch):
+    """Smoke test for the new config-driven CLI entrypoint."""
+    module = _load_script_module(
+        "script_run_train_smoke",
+        SCRIPTS_DIR / "run_train.py",
+    )
+
+    # Write a minimal training config YAML
+    config_path = tmp_path / "test_config.yaml"
+    config_path.write_text(
+        "dataset: toy\n"
+        "data_dir: data/fake\n"
+        "mu: 1.0\n"
+        "seed: 42\n"
+        f"output_dir: {tmp_path / 'results'}\n"
+    )
+
+    # Replace Trainer with a lightweight mock that doesn't need real data
+    class _MockTrainer:
+        def __init__(self, config, run_ctx):
+            self.config = config
+            self.run_ctx = run_ctx
+
+        def run(self):
+            self.run_ctx.ensure_dirs()
+            self.run_ctx.save_metadata()
+
+    monkeypatch.setattr(module, "Trainer", _MockTrainer)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["run_train.py", "--config", str(config_path)],
+    )
+
+    module.main()
+
+    # Verify run output directory was created and metadata was saved
+    results_root = tmp_path / "results"
+    assert results_root.exists()
+    run_dirs = [p for p in results_root.iterdir() if p.is_dir()]
+    assert len(run_dirs) == 1
+
+    run_dir = run_dirs[0]
+    meta_file = run_dir / "run_metadata.json"
+    assert meta_file.exists()
+
+    meta = json.loads(meta_file.read_text())
+    assert "run_id" in meta
+    assert "timestamp" in meta
+    assert meta["config_snapshot"]["seed"] == 42
+    assert meta["dataset"] == "toy"

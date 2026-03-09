@@ -1,3 +1,10 @@
+"""Legacy training script for the toy pipeline.
+
+.. deprecated::
+    Use ``scripts/run_train.py --config configs/train_toy.yaml`` instead.
+    This script is kept for backward compatibility.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
