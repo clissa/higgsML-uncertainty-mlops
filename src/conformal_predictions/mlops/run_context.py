@@ -149,7 +149,9 @@ class RunContext:
         path = path or (self.output_dir / "artifact_manifest.json")
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as fh:
-            json.dump({"run_id": self.run_id, "artifacts": self.artifacts}, fh, indent=2)
+            json.dump(
+                {"run_id": self.run_id, "artifacts": self.artifacts}, fh, indent=2
+            )
         return path
 
     def save_metadata(self, path: Optional[Path] = None) -> Path:

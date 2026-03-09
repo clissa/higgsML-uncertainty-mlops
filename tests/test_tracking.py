@@ -12,12 +12,8 @@ Covers:
 from __future__ import annotations
 
 import json
-import sys
-import types
 import uuid
-from dataclasses import replace
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -25,7 +21,6 @@ from conformal_predictions.config import TrackingConfig, load_training_config
 from conformal_predictions.mlops.run_context import RunContext
 from conformal_predictions.mlops.run_index import append_run, load_index
 from conformal_predictions.mlops.tracker import Tracker
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -59,7 +54,9 @@ class TestArtifactManifest:
         ctx = _make_ctx(tmp_path)
         assert ctx.artifacts == []
 
-        ctx.save_artifact("stats/foo.csv", type="metric", format="csv", description="test")
+        ctx.save_artifact(
+            "stats/foo.csv", type="metric", format="csv", description="test"
+        )
         assert len(ctx.artifacts) == 1
         a = ctx.artifacts[0]
         assert a["path"] == "stats/foo.csv"
@@ -75,7 +72,9 @@ class TestArtifactManifest:
 
     def test_save_manifest_writes_json(self, tmp_path):
         ctx = _make_ctx(tmp_path)
-        ctx.save_artifact("stats/scores.npz", type="calibration", format="npz", description="scores")
+        ctx.save_artifact(
+            "stats/scores.npz", type="calibration", format="npz", description="scores"
+        )
         ctx.output_dir.mkdir(parents=True, exist_ok=True)
         manifest_path = ctx.save_manifest()
 
@@ -100,7 +99,9 @@ class TestArtifactManifest:
 
     def test_artifacts_stored_as_relative_paths(self, tmp_path):
         ctx = _make_ctx(tmp_path)
-        ctx.save_artifact("stats/calibration_summary.json", type="calibration", format="json")
+        ctx.save_artifact(
+            "stats/calibration_summary.json", type="calibration", format="json"
+        )
         assert ctx.artifacts[0]["path"] == "stats/calibration_summary.json"
 
     def test_default_description_is_empty(self, tmp_path):
@@ -325,9 +326,7 @@ class TestTrackingConfigYaml:
     def test_tracking_defaults_when_section_absent(self, tmp_path):
         """YAML without a tracking: section should use TrackingConfig defaults."""
         yaml_file = tmp_path / "config.yaml"
-        yaml_file.write_text(
-            "dataset: toy\ndata_dir: data/toy_scale_easy\nmu: 1.0\n"
-        )
+        yaml_file.write_text("dataset: toy\ndata_dir: data/toy_scale_easy\nmu: 1.0\n")
         cfg = load_training_config(yaml_file)
         assert cfg.tracking.enabled is True
         assert cfg.tracking.wandb_enabled is False
