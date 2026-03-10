@@ -14,19 +14,19 @@
 # Dataset & Physics Parameters
 # ─────────────────────────────
 dataset: toy                       # "toy" for pseudo-experiments, "higgs" for real data
-data_dir: data/toy_scale_easy      # Directory containing *.npz experiment files
+data_dir: data/toy     # Directory containing *.npz experiment files
 mu: 1.0                            # Signal strength parameter (Higgs production rate)
 
 # Reproducibility
 # ───────────────
-seed: 42                           # Fixed random seed for deterministic results
+seed: 20260310                           # Fixed random seed for deterministic results
 
 # Data Splitting Strategy
 # ────────────────────────
 # Total experiments: ~1000 drawn from data_dir
 # Split: ~600 train, ~150 validation, ~125 calibration, ~125 test
-test_prefixes: ["00", "01"]        # Hold out experiments starting with these hex prefixes
-n_test_experiments: 200            # Number of held-out test experiments
+# test_prefixes: ["00", "01"]        # Hold out experiments starting with these hex prefixes
+n_test_experiments: 500            # Number of held-out test experiments
 valid_size: 0.2                    # 20% of remaining data for validation
 calib_size: 0.3                    # 30% of validation set used for calibration
 

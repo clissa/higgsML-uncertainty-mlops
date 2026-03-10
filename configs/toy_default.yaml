@@ -24,4 +24,4 @@ signal_weight: 1038.6263
 background_weight: 1050394.2
 
 # Reproducibility: set to null for fully random runs
-seed: 4
+seed: null

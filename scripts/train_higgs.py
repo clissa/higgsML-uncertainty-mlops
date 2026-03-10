@@ -326,6 +326,7 @@ def get_model_efficiencies(model, X_ref, y_ref, cfg: Settings) -> Tuple[float, f
 
 def main() -> None:
     import warnings
+
     warnings.warn(
         "train_higgs.py is a legacy multi-model script and is no longer the main "
         "pipeline entrypoint.  Use scripts/run_train.py with a single MLP config.",
