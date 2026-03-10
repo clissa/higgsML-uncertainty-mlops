@@ -3,6 +3,7 @@
 .. deprecated::
     Use ``scripts/run_train.py --config configs/train_toy.yaml`` instead.
     This script is kept for backward compatibility.
+    Since Phase 4.7, the primary pipeline supports one model per run.
 """
 
 from __future__ import annotations
@@ -18,6 +19,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
 from tqdm.auto import tqdm
+
+import warnings
 
 from conformal_predictions.data.toy import load_pseudo_experiment
 from conformal_predictions.data_viz import (
@@ -64,6 +67,11 @@ class Settings:
 
 # TODO: Add more models and hyperparameter tuning: in particular, try probability regression VS classification.
 def _build_models(seed: int) -> Dict[str, object]:
+    warnings.warn(
+        "train.py is deprecated. Use run_train.py --config ... instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return {
         "GLM": LogisticRegression(
             penalty="l2",

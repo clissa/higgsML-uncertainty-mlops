@@ -17,6 +17,13 @@ valid_size: 0.2
 calib_size: 0.5
 
 # Model / inference
+model:
+  name: mlp                  # "mlp" (default), "glm", or "random_forest"
+  params:
+    hidden_layer_sizes: [32, 16]
+    activation: relu
+    max_iter: 1000
+
 threshold: 0.5
 
 # Legacy fields (kept for backward compat with scripts/train.py)

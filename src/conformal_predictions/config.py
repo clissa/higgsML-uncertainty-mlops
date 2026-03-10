@@ -20,6 +20,11 @@ from typing import Optional, Sequence, Tuple
 import yaml
 
 # ---------------------------------------------------------------------------
+# Supported model names
+# ---------------------------------------------------------------------------
+VALID_MODEL_NAMES: tuple = ("mlp", "glm", "random_forest")
+
+# ---------------------------------------------------------------------------
 # Default: 1-sigma significance level  (alpha ≈ 0.3173)
 # ---------------------------------------------------------------------------
 ONE_SIGMA_ALPHA: float = 1.0 - math.erf(1.0 / math.sqrt(2.0))
@@ -34,6 +39,34 @@ DEFAULT_METRICS: Tuple[str, ...] = (
     "pr_auc",
     "roc_auc",
 )
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    """Configuration for model selection and hyperparameters.
+
+    Parameters
+    ----------
+    name : str
+        Model family: ``"mlp"`` (default), ``"glm"``, or ``"random_forest"``.
+    params : dict
+        Model-specific hyperparameters passed as keyword arguments to the
+        sklearn constructor.  Unknown keys are silently forwarded so that
+        sweeps can override any sklearn parameter.
+    """
+
+    name: str = "mlp"
+    params: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.name not in VALID_MODEL_NAMES:
+            raise ValueError(
+                f"Unknown model name {self.name!r}. "
+                f"Valid options: {VALID_MODEL_NAMES}"
+            )
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 @dataclass(frozen=True)
@@ -169,6 +202,9 @@ class TrainingConfig:
     valid_size: float = 0.2
     calib_size: float = 0.5
 
+    # --- model selection (Phase 4.7) ---
+    model: ModelConfig = field(default_factory=ModelConfig)
+
     # --- model / inference ---
     threshold: float = 0.5
 
@@ -202,6 +238,31 @@ class TrainingConfig:
 # ---------------------------------------------------------------------------
 
 _TARGET_MAP = {"mu_hat": "mu_hat", "mu": "mu_hat", "n_pred": "n_pred"}
+
+
+def _build_model_config(raw: dict) -> ModelConfig:
+    """Build a ``ModelConfig`` from a YAML ``model:`` section.
+
+    Accepts either a flat ``model: mlp`` string or a dict with
+    ``name`` and ``params`` keys::
+
+        model:
+          name: mlp
+          params:
+            hidden_layer_sizes: [64, 32]
+    """
+    model_raw = raw.get("model")
+    if model_raw is None:
+        return ModelConfig()  # default: MLP
+    if isinstance(model_raw, str):
+        return ModelConfig(name=model_raw)
+    if isinstance(model_raw, dict):
+        name = model_raw.get("name", "mlp")
+        params = model_raw.get("params", {})
+        if not isinstance(params, dict):
+            params = {}
+        return ModelConfig(name=name, params=params)
+    return ModelConfig()
 
 
 def _build_calibration_config(raw: dict) -> CalibrationConfig:
@@ -277,6 +338,7 @@ def load_training_config(path: str | Path) -> TrainingConfig:
 
     # Top-level scalar fields
     valid_keys = {f.name for f in fields(TrainingConfig)} - {
+        "model",
         "calibration",
         "evaluation",
         "tracking",
@@ -289,6 +351,7 @@ def load_training_config(path: str | Path) -> TrainingConfig:
         filtered["test_prefixes"] = tuple(filtered["test_prefixes"])
 
     # Sub-configs
+    filtered["model"] = _build_model_config(raw)
     filtered["calibration"] = _build_calibration_config(raw)
     filtered["evaluation"] = _build_evaluation_config(raw)
     filtered["tracking"] = _build_tracking_config(raw)

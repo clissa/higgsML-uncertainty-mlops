@@ -22,3 +22,4 @@ from conformal_predictions.training.core import (  # noqa: F401
     list_split_files,
 )
 from conformal_predictions.training.models import build_default_models  # noqa: F401
+from conformal_predictions.training.models import build_model  # noqa: F401

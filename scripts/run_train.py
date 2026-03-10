@@ -24,7 +24,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import replace
 
-from conformal_predictions.config import load_training_config
+from conformal_predictions.config import ModelConfig, load_training_config
 from conformal_predictions.mlops.run_context import RunContext
 from conformal_predictions.mlops.tracker import Tracker
 from conformal_predictions.training.trainer import Trainer
@@ -70,6 +70,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Human-readable run label (defaults to run-<id>).",
     )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Override the model family (mlp, glm, random_forest).",
+    )
     return parser.parse_args(argv)
 
 
@@ -86,6 +92,8 @@ def main(argv: list[str] | None = None) -> None:
         overrides["output_dir"] = args.output_dir
     if args.run_name is not None:
         overrides["run_name"] = args.run_name
+    if args.model is not None:
+        overrides["model"] = ModelConfig(name=args.model)
     if overrides:
         cfg = replace(cfg, **overrides)
 
@@ -94,6 +102,7 @@ def main(argv: list[str] | None = None) -> None:
 
     print(f"Run ID: {ctx.run_id}")
     print(f"Output: {ctx.output_dir}")
+    print(f"Model: {cfg.model.name}")
     print(f"Git commit: {ctx.git_commit or 'N/A'}")
     print(f"Mode: {args.mode}")
 

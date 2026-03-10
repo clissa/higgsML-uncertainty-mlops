@@ -5,8 +5,8 @@
 # This configuration demonstrates a complete training run with wandb tracking
 # enabled for experiment monitoring and artifact management.
 #
-# Models trained: GLM (Logistic Regression), Random Forest, MLP
-# Expected training time: ~2-5 minutes on CPU
+# Models trained: MLP (single model per run)
+# Expected training time: ~1-2 minutes on CPU
 # Expected convergence: MLP should reach ~85% accuracy after 50 epochs
 #
 # ───────────────────────────────────────────────────────────────────────────
@@ -29,6 +29,16 @@ test_prefixes: ["00", "01"]        # Hold out experiments starting with these he
 n_test_experiments: 200            # Number of held-out test experiments
 valid_size: 0.2                    # 20% of remaining data for validation
 calib_size: 0.3                    # 30% of validation set used for calibration
+
+# Model Configuration
+# ────────────────────
+# One model per run.  Supported: mlp (default), glm, random_forest.
+model:
+  name: mlp
+  params:
+    hidden_layer_sizes: [32, 16]
+    activation: relu
+    max_iter: 1000
 
 # Model Inference Parameters
 # ───────────────────────────
@@ -99,7 +109,7 @@ evaluation:
 # Expected WandB Dashboard:
 # - Overview panel: run status, duration, git commit
 # - Charts: accuracy/loss curves for MLP training epochs
-# - Tables: final metrics per model (GLM, RF, MLP)
+# - Tables: final metrics for the selected model
 # - Artifacts: model checkpoints, calibration plots, run metadata JSON
 #
 tracking:
@@ -123,19 +133,17 @@ tracking:
 # Expected Pipeline Behavior:
 #
 # 1. TRAINING STAGE (~1-2 min):
-#    - GLM: Single-pass fit, immediate convergence
-#    - Random Forest: 50 trees grown in parallel
 #    - MLP: 1000 max iterations, early stopping likely around epoch 200-300
 #
 # 2. CALIBRATION STAGE (~10-20 sec):
 #    - Generate predictions on 125 calibration experiments
 #    - Compute nonconformity scores: |mu_true - mu_pred|
 #    - Extract 68th percentile → quantile thresholds
-#    - Construct prediction intervals for each model
+#    - Construct prediction intervals for the model
 #
 # 3. EVALUATION STAGE (~10-20 sec):
-#    - Apply models to 125 test experiments
-#    - Compute classification metrics per model
+#    - Apply model to 125 test experiments
+#    - Compute classification metrics
 #    - Validate empirical coverage ≈ 68% ± 2%
 #    - Generate diagnostic plots (calibration curves, interval histograms)
 #

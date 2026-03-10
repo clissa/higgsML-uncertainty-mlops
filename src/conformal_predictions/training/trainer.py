@@ -82,7 +82,7 @@ from conformal_predictions.training.core import (
     get_events_count,
     list_split_files,
 )
-from conformal_predictions.training.models import build_default_models
+from conformal_predictions.training.models import build_model
 
 # Optional tracker import (Phase 3)
 try:
@@ -201,8 +201,8 @@ class Trainer:
     # ------------------------------------------------------------------
 
     def fit(self, X_train: np.ndarray, y_train: np.ndarray) -> None:
-        """Build and train the default model catalogue."""
-        self.models = build_default_models(self.config.seed)
+        """Build and train the configured model."""
+        self.models = build_model(self.config.model, self.config.seed)
         for model in tqdm(self.models.values(), desc="Training models"):
             model.fit(X_train, y_train)
 
@@ -373,13 +373,12 @@ class Trainer:
         print(f"  target={calib_config.target}  how={calib_config.how}")
         print(f"  alpha={calib_config.alpha:.4f}  ci_type={calib_config.ci_type}")
 
-        # Average ref efficiencies across models (per-model support would
-        # require a refactor of run_calibration's API).
+        # Use reference efficiencies from the (single) model.
         ref_efficiencies: Optional[Tuple[float, float]] = None
         if self._ref_efficiencies:
-            avg_eps_s = float(np.mean([v[0] for v in self._ref_efficiencies.values()]))
-            avg_eps_b = float(np.mean([v[1] for v in self._ref_efficiencies.values()]))
-            ref_efficiencies = (avg_eps_s, avg_eps_b)
+            # Single-model pipeline: take the only entry directly.
+            eps_s, eps_b = next(iter(self._ref_efficiencies.values()))
+            ref_efficiencies = (float(eps_s), float(eps_b))
 
         result = run_calibration(
             self.models,

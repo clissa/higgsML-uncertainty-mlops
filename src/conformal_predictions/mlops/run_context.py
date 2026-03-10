@@ -164,6 +164,7 @@ class RunContext:
         payload = {
             "run_id": self.run_id,
             "timestamp": self.timestamp,
+            "model_name": self.config_snapshot.get("model", {}).get("name", "unknown"),
             "config_snapshot": self.config_snapshot,
             "config_path": self.config_path,
             "dataset": self.dataset,
