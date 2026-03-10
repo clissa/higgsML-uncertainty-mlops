@@ -43,7 +43,11 @@ def _md_table(headers: list[str], rows: list[list]) -> str:
             col_widths[i] = max(col_widths[i], len(cell))
 
     def fmt_row(cells: list[str]) -> str:
-        return "| " + " | ".join(c.ljust(col_widths[i]) for i, c in enumerate(cells)) + " |"
+        return (
+            "| "
+            + " | ".join(c.ljust(col_widths[i]) for i, c in enumerate(cells))
+            + " |"
+        )
 
     sep = "| " + " | ".join("-" * w for w in col_widths) + " |"
     lines = [fmt_row(headers), sep] + [fmt_row(r) for r in str_rows]
@@ -108,8 +112,8 @@ def generate_run_report(
     config_path = getattr(ctx, "config_path", None) or "—"
     git_commit = getattr(ctx, "git_commit", None) or "—"
     lines += [
-        f"| Field         | Value |",
-        f"|---------------|-------|",
+        "| Field         | Value |",
+        "|---------------|-------|",
         f"| **Run ID**    | `{ctx.run_id}` |",
         f"| **Timestamp** | {ctx.timestamp} |",
         f"| **Dataset**   | {ctx.dataset} |",
@@ -123,7 +127,15 @@ def generate_run_report(
     perf_rows = _build_perf_rows(metrics)
     if perf_rows:
         lines.append("## Classification Metrics (test set, avg over experiments)\n")
-        headers = ["Model", "Accuracy", "Precision", "Recall", "F1", "ROC-AUC", "PR-AUC"]
+        headers = [
+            "Model",
+            "Accuracy",
+            "Precision",
+            "Recall",
+            "F1",
+            "ROC-AUC",
+            "PR-AUC",
+        ]
         rows = [
             [
                 model,

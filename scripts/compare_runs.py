@@ -32,10 +32,9 @@ import argparse
 import csv
 import io
 import json
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 # ---------------------------------------------------------------------------
 # Default settings
@@ -188,7 +187,11 @@ def _tabulate_md(headers: List[str], rows: List[List[str]]) -> str:
             col_widths[i] = max(col_widths[i], len(cell))
 
     def fmt_row(cells: List[str]) -> str:
-        return "| " + " | ".join(c.ljust(col_widths[i]) for i, c in enumerate(cells)) + " |"
+        return (
+            "| "
+            + " | ".join(c.ljust(col_widths[i]) for i, c in enumerate(cells))
+            + " |"
+        )
 
     sep = "| " + " | ".join("-" * w for w in col_widths) + " |"
     return "\n".join([fmt_row(headers), sep] + [fmt_row(r) for r in rows])
