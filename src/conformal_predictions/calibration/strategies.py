@@ -51,6 +51,18 @@ class CalibrationResult:
         model_name → summary statistics dict.
     config : CalibrationConfig
         The configuration used for this calibration.
+    per_block_q_low : dict
+        model_name → list of per-experiment q_low values.
+    per_block_q_high : dict
+        model_name → list of per-experiment q_high values.
+    per_block_scores : dict
+        model_name → list of per-experiment score arrays.
+    calib_y_true : np.ndarray or None
+        Concatenated calibration-set true labels.
+    calib_y_pred : dict or None
+        model_name → concatenated hard predictions on calib set.
+    calib_y_proba : dict or None
+        model_name → concatenated predicted probabilities on calib set.
     """
 
     scores: Dict[str, np.ndarray] = field(default_factory=dict)
@@ -58,6 +70,12 @@ class CalibrationResult:
     mu_hat: Dict[str, List[float]] = field(default_factory=dict)
     mu_hat_stats: Dict[str, Dict[str, float]] = field(default_factory=dict)
     config: Optional[CalibrationConfig] = None
+    per_block_q_low: Dict[str, List[float]] = field(default_factory=dict)
+    per_block_q_high: Dict[str, List[float]] = field(default_factory=dict)
+    per_block_scores: Dict[str, List[np.ndarray]] = field(default_factory=dict)
+    calib_y_true: Optional[np.ndarray] = None
+    calib_y_pred: Optional[Dict[str, np.ndarray]] = None
+    calib_y_proba: Optional[Dict[str, np.ndarray]] = None
 
 
 def run_calibration(
@@ -96,7 +114,7 @@ def run_calibration(
     """
     result = CalibrationResult(config=calib_config)
 
-    # 1. Nonconformity scores
+    # 1. Nonconformity scores (flat + per-block)
     raw_scores = compute_nonconformity_scores(
         models,
         scaler,
@@ -109,7 +127,15 @@ def run_calibration(
     )
     result.scores = {n: np.array(v) for n, v in raw_scores.items()}
 
-    # 2. Quantile extraction
+    # Collect per-block score arrays for per-block quantile computation
+    per_block: Dict[str, List[np.ndarray]] = {n: [] for n in models}
+    for name, scores_list in raw_scores.items():
+        # Each item is one score per experiment — group into single-element arrays
+        for s in scores_list:
+            per_block[name].append(np.array([s]))
+    result.per_block_scores = per_block
+
+    # 2. Quantile extraction (full-set)
     for name, scores_arr in result.scores.items():
         if len(scores_arr) > 0:
             result.quantiles[name] = extract_quantiles(
@@ -118,6 +144,44 @@ def run_calibration(
                 how=calib_config.how,
                 ci_type=calib_config.ci_type,
             )
+
+    # 2b. Per-block quantile computation (sliding window over raw scores)
+    #     Since each experiment yields a single score, we compute quantiles
+    #     on cumulative sub-windows to show convergence / variability.
+    for name, scores_arr in result.scores.items():
+        if len(scores_arr) < 2:
+            continue
+        q_lows: List[float] = []
+        q_highs: List[float] = []
+        # Use leave-one-out: quantiles from all-but-one experiment
+        for i in range(len(scores_arr)):
+            subset = np.concatenate([scores_arr[:i], scores_arr[i + 1 :]])
+            if len(subset) > 0:
+                ql, qh = extract_quantiles(
+                    subset,
+                    calib_config.alpha,
+                    how=calib_config.how,
+                    ci_type=calib_config.ci_type,
+                )
+                q_lows.append(ql)
+                q_highs.append(qh)
+        result.per_block_q_low[name] = q_lows
+        result.per_block_q_high[name] = q_highs
+
+    # 2c. Collect calibration-set predictions for downstream metrics
+    all_y_true: List[np.ndarray] = []
+    calib_y_pred: Dict[str, List[np.ndarray]] = {n: [] for n in models}
+    calib_y_proba: Dict[str, List[np.ndarray]] = {n: [] for n in models}
+    for X_calib, y_calib in calib_data:
+        X_scaled = scaler.transform(X_calib)
+        all_y_true.append(y_calib)
+        for name, model in models.items():
+            proba = model.predict_proba(X_scaled)[:, 1]
+            calib_y_proba[name].append(proba)
+            calib_y_pred[name].append((proba > threshold).astype(int))
+    result.calib_y_true = np.concatenate(all_y_true)
+    result.calib_y_pred = {n: np.concatenate(v) for n, v in calib_y_pred.items()}
+    result.calib_y_proba = {n: np.concatenate(v) for n, v in calib_y_proba.items()}
 
     # 3. mu-hat calibration distribution
     mu_hat, mu_hat_stats = compute_mu_hat(

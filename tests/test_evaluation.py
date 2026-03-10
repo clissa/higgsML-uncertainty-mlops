@@ -32,6 +32,7 @@ from conformal_predictions.evaluation.metrics import (
     compute_ci_score,
     compute_coverage,
     compute_mean_width,
+    compute_per_example_loss,
     compute_performance_metrics,
 )
 
@@ -301,8 +302,9 @@ class TestPlotFunctions:
 
     def test_no_output_path_returns_figure(self, rng):
         """When output_path is None, figure is returned and no file is written."""
-        from conformal_predictions.evaluation.plots import plot_roc_curve
         import matplotlib.pyplot as plt
+
+        from conformal_predictions.evaluation.plots import plot_roc_curve
 
         y_true = rng.integers(0, 2, size=50)
         y_score = rng.uniform(0, 1, size=50)
@@ -441,3 +443,231 @@ class TestRunReport:
         content = out.read_text()
         assert "abc12345" in content
         assert "Classification Metrics" not in content
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.5: new plot functions
+# ---------------------------------------------------------------------------
+
+
+class TestNewPlotFunctions:
+    """Tests for Phase 4.5 new plot functions."""
+
+    @pytest.fixture
+    def rng(self):
+        return np.random.default_rng(42)
+
+    def test_plot_target_distribution(self, tmp_path, rng):
+        import matplotlib.pyplot as plt
+
+        from conformal_predictions.evaluation.plots import plot_target_distribution
+
+        y = rng.integers(0, 2, size=200)
+        out = tmp_path / "target_dist.png"
+        fig = plot_target_distribution(y, output_path=out)
+        assert out.exists()
+        assert isinstance(fig, plt.Figure)
+
+    def test_plot_target_distribution_log_scale(self, tmp_path):
+        """Imbalanced data should trigger log scale."""
+        import matplotlib.pyplot as plt
+
+        from conformal_predictions.evaluation.plots import plot_target_distribution
+
+        y = np.concatenate([np.zeros(1000), np.ones(10)])
+        out = tmp_path / "target_dist_imb.png"
+        fig = plot_target_distribution(y, output_path=out)
+        assert out.exists()
+        assert isinstance(fig, plt.Figure)
+
+    def test_plot_predictions_ecdf(self, tmp_path, rng):
+        import matplotlib.pyplot as plt
+
+        from conformal_predictions.evaluation.plots import plot_predictions_ecdf
+
+        proba_train = rng.uniform(0, 1, size=200)
+        proba_val = rng.uniform(0, 1, size=100)
+        out = tmp_path / "ecdf.png"
+        fig = plot_predictions_ecdf(proba_train, proba_val, output_path=out)
+        assert out.exists()
+        assert isinstance(fig, plt.Figure)
+
+    def test_plot_nonconformity_ecdf(self, tmp_path, rng):
+        import matplotlib.pyplot as plt
+
+        from conformal_predictions.evaluation.plots import plot_nonconformity_ecdf
+
+        scores = rng.normal(0, 1, size=200)
+        out = tmp_path / "nc_ecdf.png"
+        fig = plot_nonconformity_ecdf(scores, output_path=out)
+        assert out.exists()
+        assert isinstance(fig, plt.Figure)
+
+    def test_plot_nonconformity_by_class(self, tmp_path, rng):
+        import matplotlib.pyplot as plt
+
+        from conformal_predictions.evaluation.plots import plot_nonconformity_by_class
+
+        s0 = rng.normal(0, 1, size=100)
+        s1 = rng.normal(1, 1, size=80)
+        out = tmp_path / "nc_by_class.png"
+        fig = plot_nonconformity_by_class(s0, s1, output_path=out)
+        assert out.exists()
+        assert isinstance(fig, plt.Figure)
+
+    def test_plot_distribution(self, tmp_path, rng):
+        import matplotlib.pyplot as plt
+
+        from conformal_predictions.evaluation.plots import plot_distribution
+
+        vals = rng.exponential(1, size=300)
+        out = tmp_path / "dist.png"
+        fig = plot_distribution(vals, output_path=out, title="Test Dist")
+        assert out.exists()
+        assert isinstance(fig, plt.Figure)
+
+    def test_plot_distribution_empty(self, tmp_path):
+        import matplotlib.pyplot as plt
+
+        from conformal_predictions.evaluation.plots import plot_distribution
+
+        out = tmp_path / "empty.png"
+        fig = plot_distribution([], output_path=out, title="Empty")
+        assert out.exists()
+        assert isinstance(fig, plt.Figure)
+
+    def test_plot_confusion_matrix(self, tmp_path, rng):
+        import matplotlib.pyplot as plt
+
+        from conformal_predictions.evaluation.plots import plot_confusion_matrix
+
+        y_true = rng.integers(0, 2, size=100)
+        y_pred = rng.integers(0, 2, size=100)
+        out = tmp_path / "cm.png"
+        fig = plot_confusion_matrix(y_true, y_pred, output_path=out)
+        assert out.exists()
+        assert isinstance(fig, plt.Figure)
+
+    def test_roc_curve_with_train(self, tmp_path, rng):
+        """ROC curve with optional train overlay."""
+        import matplotlib.pyplot as plt
+
+        from conformal_predictions.evaluation.plots import plot_roc_curve
+
+        y_true = rng.integers(0, 2, size=100)
+        y_score = rng.uniform(0, 1, size=100)
+        y_true_tr = rng.integers(0, 2, size=200)
+        y_score_tr = rng.uniform(0, 1, size=200)
+        out = tmp_path / "roc_joint.png"
+        fig = plot_roc_curve(
+            y_true,
+            y_score,
+            "M",
+            output_path=out,
+            y_true_train=y_true_tr,
+            y_score_train=y_score_tr,
+        )
+        assert out.exists()
+        assert isinstance(fig, plt.Figure)
+
+    def test_pr_curve_with_train(self, tmp_path, rng):
+        """PR curve with optional train overlay."""
+        import matplotlib.pyplot as plt
+
+        from conformal_predictions.evaluation.plots import plot_pr_curve
+
+        y_true = rng.integers(0, 2, size=100)
+        y_score = rng.uniform(0, 1, size=100)
+        y_true_tr = rng.integers(0, 2, size=200)
+        y_score_tr = rng.uniform(0, 1, size=200)
+        out = tmp_path / "pr_joint.png"
+        fig = plot_pr_curve(
+            y_true,
+            y_score,
+            "M",
+            output_path=out,
+            y_true_train=y_true_tr,
+            y_score_train=y_score_tr,
+        )
+        assert out.exists()
+        assert isinstance(fig, plt.Figure)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.5: per-example loss
+# ---------------------------------------------------------------------------
+
+
+class TestPerExampleLoss:
+    def test_basic_shape(self):
+        y_true = np.array([0, 1, 0, 1])
+        y_proba = np.array([0.1, 0.9, 0.2, 0.8])
+        losses = compute_per_example_loss(y_true, y_proba)
+        assert losses.shape == (4,)
+        assert np.all(losses >= 0)
+
+    def test_perfect_predictions(self):
+        y_true = np.array([0, 1, 0, 1])
+        y_proba = np.array([1e-6, 1.0 - 1e-6, 1e-6, 1.0 - 1e-6])
+        losses = compute_per_example_loss(y_true, y_proba)
+        assert np.all(losses < 0.01)
+
+    def test_worst_case(self):
+        y_true = np.array([0, 1])
+        y_proba = np.array([0.999, 0.001])
+        losses = compute_per_example_loss(y_true, y_proba)
+        assert np.all(losses > 5.0)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.5: error analysis
+# ---------------------------------------------------------------------------
+
+
+class TestErrorAnalysis:
+    def test_build_top_errors_table(self):
+        from conformal_predictions.evaluation.error_analysis import (
+            build_top_errors_table,
+        )
+
+        rng = np.random.default_rng(42)
+        y_true = rng.integers(0, 2, size=200)
+        y_proba = rng.uniform(0, 1, size=200)
+        y_pred = (y_proba > 0.5).astype(int)
+        df = build_top_errors_table(y_true, y_pred, y_proba, N=50)
+        assert len(df) == 50
+        assert "per_example_loss" in df.columns
+        assert "true_label" in df.columns
+        assert "confidence" in df.columns
+        # Should be sorted by loss descending
+        assert df["per_example_loss"].iloc[0] >= df["per_example_loss"].iloc[-1]
+
+    def test_build_top_errors_with_features(self):
+        from conformal_predictions.evaluation.error_analysis import (
+            build_top_errors_table,
+        )
+
+        rng = np.random.default_rng(42)
+        n = 100
+        y_true = rng.integers(0, 2, size=n)
+        y_proba = rng.uniform(0, 1, size=n)
+        y_pred = (y_proba > 0.5).astype(int)
+        X = rng.standard_normal((n, 3))
+        df = build_top_errors_table(
+            y_true, y_pred, y_proba, X=X, feature_names=["a", "b", "c"], N=10
+        )
+        assert len(df) == 10
+        assert "a" in df.columns
+        assert "b" in df.columns
+        assert "c" in df.columns
+
+    def test_build_top_errors_n_larger_than_data(self):
+        from conformal_predictions.evaluation.error_analysis import (
+            build_top_errors_table,
+        )
+
+        y_true = np.array([0, 1])
+        y_proba = np.array([0.9, 0.1])
+        y_pred = np.array([1, 0])
+        df = build_top_errors_table(y_true, y_pred, y_proba, N=100)
+        assert len(df) == 2

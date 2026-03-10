@@ -11,8 +11,8 @@ Usage::
     tracker = Tracker(ctx, cfg.tracking)
     tracker.start(cfg.to_dict())
 
-    tracker.log("logistic_regression.val_f1", 0.82, stage="train")
-    tracker.log("logistic_regression.coverage", 0.68, stage="evaluate")
+    tracker.log("Evaluation/val/f1", 0.82, stage="train")
+    tracker.log("Calibration/metrics/coverage", 0.68, stage="evaluate")
 
     tracker.finish()   # writes metrics.json, appends to runs_index.json
 """
@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -101,7 +102,7 @@ class Tracker:
         Parameters
         ----------
         name : str
-            Metric name, e.g. ``"logistic_regression.val_f1"``.
+            Metric name, e.g. ``"Evaluation/val/f1"``.
         value : float
             Scalar value.
         step : int, optional
@@ -128,6 +129,40 @@ class Tracker:
                 self._wandb_run.log(log_dict, **kwargs)
             except Exception:
                 pass
+
+    def log_image(self, key: str, path: "Path") -> None:
+        """Log a PNG image to wandb under *key*; fails silently.
+
+        Parameters
+        ----------
+        key : str
+            Wandb key, e.g. ``"Evaluation/plots/roc_curve"``.
+        path : Path
+            Local path to the image file.
+        """
+        if self._wandb_run is None:
+            return
+        try:
+            self._wandb_run.log({key: _wandb.Image(str(path))})
+        except Exception:
+            pass
+
+    def log_table(self, key: str, table: object) -> None:
+        """Log a ``wandb.Table`` to wandb under *key*; fails silently.
+
+        Parameters
+        ----------
+        key : str
+            Wandb key, e.g. ``"ErrorAnalysis/train/top_errors"``.
+        table : wandb.Table
+            A wandb Table object.
+        """
+        if self._wandb_run is None:
+            return
+        try:
+            self._wandb_run.log({key: table})
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Finish

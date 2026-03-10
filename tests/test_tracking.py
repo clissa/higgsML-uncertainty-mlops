@@ -359,3 +359,62 @@ class TestTrackingConfigYaml:
         )
         cfg = load_training_config(yaml_file)
         assert cfg.tracking.enabled is True
+
+
+# ---------------------------------------------------------------------------
+# F) Phase 4.5 — Tracker log_image / log_table
+# ---------------------------------------------------------------------------
+
+
+class TestTrackerLogImageTable:
+    """Verify log_image and log_table methods exist and are no-ops without wandb."""
+
+    def test_log_image_no_wandb(self, tmp_path):
+        ctx = _make_ctx(tmp_path)
+        cfg = _make_tracking_config(index_path=str(tmp_path / "idx.json"))
+        t = Tracker(ctx, cfg)
+        t.start({})
+        # Should not raise even though wandb is not running
+        from pathlib import Path
+
+        t.log_image("Evaluation/plots/roc_curve", Path(tmp_path / "fake.png"))
+
+    def test_log_table_no_wandb(self, tmp_path):
+        ctx = _make_ctx(tmp_path)
+        cfg = _make_tracking_config(index_path=str(tmp_path / "idx.json"))
+        t = Tracker(ctx, cfg)
+        t.start({})
+        t.log_table("ErrorAnalysis/train/top_errors", {"fake": "table"})
+
+
+# ---------------------------------------------------------------------------
+# G) Phase 4.5 — wandb key format validation
+# ---------------------------------------------------------------------------
+
+
+class TestWandbKeyFormat:
+    """Verify all keys logged via tracker match the taxonomy regex."""
+
+    def test_logged_keys_match_taxonomy(self, tmp_path):
+        """Collect metrics from a tracker and verify key format."""
+        import re
+
+        ctx = _make_ctx(tmp_path)
+        ctx.output_dir.mkdir(parents=True)
+        cfg = _make_tracking_config(index_path=str(tmp_path / "idx.json"))
+        t = Tracker(ctx, cfg)
+        t.start({})
+
+        # Log some keys in the new format
+        t.log("Evaluation/val/f1", 0.82, stage="train")
+        t.log("Evaluation/train/accuracy", 0.90, stage="train")
+        t.log("Calibration/nonconformity/score_mean", 0.5, stage="calibrate")
+        t.log("EDA/train/class_balance", 0.45, stage="train")
+        t.log("Calibration/metrics/coverage", 0.68, stage="evaluate")
+
+        pattern = re.compile(
+            r"^(EDA|Evaluation|Calibration|ErrorAnalysis)/[^/]+/[^/]+$"
+        )
+        for entry in t._metrics:
+            key = entry["name"]
+            assert pattern.match(key), f"Key {key!r} does not match taxonomy pattern"

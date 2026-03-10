@@ -181,6 +181,12 @@ class TestCalibrationResult:
         assert r.scores == {}
         assert r.quantiles == {}
         assert r.config is None
+        assert r.per_block_q_low == {}
+        assert r.per_block_q_high == {}
+        assert r.per_block_scores == {}
+        assert r.calib_y_true is None
+        assert r.calib_y_pred is None
+        assert r.calib_y_proba is None
 
     def test_with_data(self):
         cfg = CalibrationConfig(target="mu_hat", alpha=0.05)
@@ -191,3 +197,26 @@ class TestCalibrationResult:
         )
         assert len(r.scores["M"]) == 2
         assert r.config.alpha == 0.05
+
+    def test_per_block_fields(self):
+        r = CalibrationResult(
+            per_block_q_low={"M": [0.1, 0.2, 0.15]},
+            per_block_q_high={"M": [0.8, 0.9, 0.85]},
+        )
+        assert len(r.per_block_q_low["M"]) == 3
+        assert len(r.per_block_q_high["M"]) == 3
+        widths = [
+            qh - ql for ql, qh in zip(r.per_block_q_low["M"], r.per_block_q_high["M"])
+        ]
+        assert all(w > 0 for w in widths)
+
+    def test_calib_prediction_fields(self):
+        r = CalibrationResult(
+            calib_y_true=np.array([0, 1, 0, 1]),
+            calib_y_pred={"M": np.array([0, 1, 1, 0])},
+            calib_y_proba={"M": np.array([0.2, 0.8, 0.6, 0.3])},
+        )
+        assert r.calib_y_true is not None
+        assert len(r.calib_y_true) == 4
+        assert "M" in r.calib_y_pred
+        assert "M" in r.calib_y_proba

@@ -168,15 +168,71 @@ def generate_run_report(
         lines.append(_md_table(headers, rows))
         lines.append("")
 
-    # ---- plot references ----
+    # ---- plot references (organised by section) ----
     plot_artifacts = [a for a in ctx.artifacts if a.get("type") == "plot"]
-    if plot_artifacts:
-        lines.append("## Plots\n")
-        for art in plot_artifacts:
+    ea_artifacts = [a for a in ctx.artifacts if a.get("type") == "error_analysis"]
+
+    # Group plots by category
+    eda_plots = [
+        a
+        for a in plot_artifacts
+        if "target_distribution" in a["path"] or "contour" in a["path"]
+    ]
+    eval_plots = [
+        a
+        for a in plot_artifacts
+        if any(k in a["path"] for k in ("roc_curve", "pr_curve", "predictions_ecdf"))
+    ]
+    calib_plots = [
+        a
+        for a in plot_artifacts
+        if any(
+            k in a["path"]
+            for k in ("nonconformity", "mu_hat", "ci_", "q_low", "q_high", "block_ci")
+        )
+    ]
+    other_plots = [
+        a for a in plot_artifacts if a not in eda_plots + eval_plots + calib_plots
+    ]
+
+    if eda_plots:
+        lines.append("## EDA Plots\n")
+        for art in eda_plots:
             rel_path = art["path"]
             desc = art.get("description") or rel_path
             lines.append(f"### {desc}\n")
             lines.append(f"![{desc}]({rel_path})\n")
+
+    if eval_plots:
+        lines.append("## Evaluation Plots\n")
+        for art in eval_plots:
+            rel_path = art["path"]
+            desc = art.get("description") or rel_path
+            lines.append(f"### {desc}\n")
+            lines.append(f"![{desc}]({rel_path})\n")
+
+    if calib_plots:
+        lines.append("## Calibration Plots\n")
+        for art in calib_plots:
+            rel_path = art["path"]
+            desc = art.get("description") or rel_path
+            lines.append(f"### {desc}\n")
+            lines.append(f"![{desc}]({rel_path})\n")
+
+    if other_plots:
+        lines.append("## Other Plots\n")
+        for art in other_plots:
+            rel_path = art["path"]
+            desc = art.get("description") or rel_path
+            lines.append(f"### {desc}\n")
+            lines.append(f"![{desc}]({rel_path})\n")
+
+    if ea_artifacts:
+        lines.append("## Error Analysis Artifacts\n")
+        for art in ea_artifacts:
+            rel_path = art["path"]
+            desc = art.get("description") or rel_path
+            lines.append(f"- [{desc}]({rel_path})\n")
 
     # ---- footer ----
     lines.append("---\n")

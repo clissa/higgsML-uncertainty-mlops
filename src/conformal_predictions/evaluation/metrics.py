@@ -93,6 +93,41 @@ METRIC_REGISTRY: Dict[str, MetricFn] = {
 
 
 # ---------------------------------------------------------------------------
+# Per-example loss
+# ---------------------------------------------------------------------------
+
+
+def compute_per_example_loss(
+    y_true: np.ndarray,
+    y_proba: np.ndarray,
+    eps: float = 1e-15,
+) -> np.ndarray:
+    """Element-wise binary cross-entropy loss.
+
+    .. math::
+
+        \\ell_i = -[y_i \\log(p_i) + (1 - y_i) \\log(1 - p_i)]
+
+    Parameters
+    ----------
+    y_true : 1-D array
+        Ground truth labels (0 or 1).
+    y_proba : 1-D array
+        Predicted probabilities for the positive class.
+    eps : float
+        Clipping epsilon to avoid log(0).
+
+    Returns
+    -------
+    np.ndarray
+        Per-example loss values, same length as *y_true*.
+    """
+    y = np.asarray(y_true, dtype=float)
+    p = np.clip(np.asarray(y_proba, dtype=float), eps, 1.0 - eps)
+    return -(y * np.log(p) + (1.0 - y) * np.log(1.0 - p))
+
+
+# ---------------------------------------------------------------------------
 # Performance metrics
 # ---------------------------------------------------------------------------
 
