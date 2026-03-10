@@ -72,8 +72,8 @@ from conformal_predictions.mlops.log_keys import (
     EDA,
     ERROR_ANALYSIS,
     EVALUATION,
-    PLOTS,
     calib_key,
+    plots_key,
     wandb_key,
 )
 from conformal_predictions.mlops.run_context import RunContext
@@ -572,6 +572,10 @@ class Trainer:
                         )
                 for metric_name, value in cal.items():
                     if isinstance(value, (int, float)):
+                        # "coverage" is visualised as a CI forest plot in Plots/
+                        # section; skip the redundant scalar here.
+                        if metric_name == "coverage":
+                            continue
                         # Rename "width" to avoid collision with per-block ci_width
                         key_name = (
                             "test_ci_width" if metric_name == "width" else metric_name
@@ -631,9 +635,7 @@ class Trainer:
                     description=f"ROC curve — {model_name}",
                 )
                 if self.tracker is not None:
-                    self.tracker.log_image(
-                        wandb_key(PLOTS, "predictions", "roc_curve"), path
-                    )
+                    self.tracker.log_image(plots_key("test_roc_curve"), path)
 
             # Joint train+val PR curve
             if "y_true_val" in raw and "y_proba_val" in raw:
@@ -654,9 +656,7 @@ class Trainer:
                     description=f"PR curve — {model_name}",
                 )
                 if self.tracker is not None:
-                    self.tracker.log_image(
-                        wandb_key(PLOTS, "predictions", "pr_curve"), path
-                    )
+                    self.tracker.log_image(plots_key("test_pr_curve"), path)
 
             # Predictions ECDF (train vs val)
             if "y_proba_val" in raw and y_proba_train is not None:
@@ -675,10 +675,7 @@ class Trainer:
                     description=f"Predictions ECDF — {model_name}",
                 )
                 if self.tracker is not None:
-                    self.tracker.log_image(
-                        wandb_key(PLOTS, "predictions", "predictions_ecdf"),
-                        path,
-                    )
+                    self.tracker.log_image(plots_key("predictions_ecdf"), path)
 
             # μ̂ distribution (test set)
             mu_hat_vals = raw.get("mu_hat", [])
@@ -697,10 +694,7 @@ class Trainer:
                     description=f"μ̂ distribution (test set) — {model_name}",
                 )
                 if self.tracker is not None:
-                    self.tracker.log_image(
-                        wandb_key(PLOTS, "calibration", "mu_hat_distribution_test"),
-                        path,
-                    )
+                    self.tracker.log_image(plots_key("mu_hat_distribution_test"), path)
 
             # CI width distribution
             lower = raw.get("lower")
@@ -739,6 +733,13 @@ class Trainer:
                 description="CI coverage",
             )
             # (image logging removed from Calibration section)
+
+        # CI forest plot — log the first page per model to Plots/ci_coverage
+        if self.tracker is not None:
+            for model_name in self.models:
+                ci_plot = ctx.stats_dir / f"test_CI_plots-1_{model_name}.png"
+                if ci_plot.exists():
+                    self.tracker.log_image(plots_key("ci_coverage"), ci_plot)
 
         # Calibration-specific plots
         if calibration_result is not None:
@@ -860,45 +861,10 @@ class Trainer:
                 )
                 # (image logging removed from Calibration section)
 
-            # Per-block q_low / q_high / width distributions
+            # Per-block CI width distribution
             q_lows = calibration_result.per_block_q_low.get(model_name, [])
             q_highs = calibration_result.per_block_q_high.get(model_name, [])
             if q_lows and q_highs:
-                # q_low distribution
-                path_ql = ctx.plots_dir / "q_low_distribution.png"
-                plot_distribution(
-                    q_lows,
-                    output_path=path_ql,
-                    title=f"q_low Distribution — {model_name}",
-                    xlabel="q_low",
-                    color="#4E79A7",
-                    dpi=dpi,
-                )
-                ctx.save_artifact(
-                    "plots/q_low_distribution.png",
-                    type="plot",
-                    format="png",
-                    description=f"q_low distribution — {model_name}",
-                )
-                # (image logging removed from Calibration section)
-
-                # q_high distribution
-                path_qh = ctx.plots_dir / "q_high_distribution.png"
-                plot_distribution(
-                    q_highs,
-                    output_path=path_qh,
-                    title=f"q_high Distribution — {model_name}",
-                    xlabel="q_high",
-                    color="#E15759",
-                    dpi=dpi,
-                )
-                ctx.save_artifact(
-                    "plots/q_high_distribution.png",
-                    type="plot",
-                    format="png",
-                    description=f"q_high distribution — {model_name}",
-                )
-
                 # CI width distribution (per-block)
                 block_widths = [qh - ql for ql, qh in zip(q_lows, q_highs)]
                 path_bw = ctx.plots_dir / "block_ci_width_distribution.png"

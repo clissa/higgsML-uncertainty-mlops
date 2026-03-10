@@ -6,10 +6,16 @@ wandb key construction.
 
 Usage::
 
-    from conformal_predictions.mlops.log_keys import wandb_key, EDA
+    from conformal_predictions.mlops.log_keys import wandb_key, calib_key, plots_key, EDA
 
     key = wandb_key(EDA, "plots", "target_distribution")
     # => "EDA/plots/target_distribution"
+
+    flat_calib = calib_key("coverage")
+    # => "Calibration/coverage"
+
+    flat_plot = plots_key("test_roc_curve")
+    # => "Plots/test_roc_curve"
 """
 
 from __future__ import annotations
@@ -49,6 +55,25 @@ def calib_key(name: str) -> str:
         Key in the form ``"Calibration/<name>"``.
     """
     return f"Calibration/{name}"
+
+
+def plots_key(name: str) -> str:
+    """Build a flat ``Plots/<name>`` wandb image key.
+
+    Use this for all Plots-section images to keep the wandb dashboard
+    free of nested sub-sections.
+
+    Parameters
+    ----------
+    name : str
+        Plot artifact name, e.g. ``"test_roc_curve"`` or ``"predictions_ecdf"``.
+
+    Returns
+    -------
+    str
+        Key in the form ``"Plots/<name>"``.
+    """
+    return f"Plots/{name}"
 
 
 def wandb_key(section: str, subsection: str, name: str) -> str:

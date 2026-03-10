@@ -14,6 +14,7 @@ from conformal_predictions.mlops.log_keys import (
     EVALUATION,
     PLOTS,
     calib_key,
+    plots_key,
     wandb_key,
 )
 
@@ -85,3 +86,35 @@ class TestCalibKey:
         per_block = calib_key("ci_width")
         test_set = calib_key("test_ci_width")
         assert per_block != test_set
+
+
+class TestPlotsKey:
+    """Validate the flat Plots key helper."""
+
+    def test_basic_construction(self):
+        key = plots_key("test_roc_curve")
+        assert key == "Plots/test_roc_curve"
+
+    def test_format_is_two_level(self):
+        """plots_key must produce exactly two path components."""
+        for name in (
+            "test_roc_curve",
+            "test_pr_curve",
+            "predictions_ecdf",
+            "mu_hat_distribution_test",
+        ):
+            key = plots_key(name)
+            parts = key.split("/")
+            assert len(parts) == 2, f"Expected 2 levels, got {key!r}"
+            assert parts[0] == "Plots"
+            assert parts[1] == name
+
+    def test_no_subsection(self):
+        """plots_key must NOT include a subsection (3rd component)."""
+        key = plots_key("predictions_ecdf")
+        assert key.count("/") == 1
+
+    def test_test_prefix_for_roc_pr(self):
+        """ROC and PR curve keys must carry the test_ prefix."""
+        assert plots_key("test_roc_curve").endswith("test_roc_curve")
+        assert plots_key("test_pr_curve").endswith("test_pr_curve")
