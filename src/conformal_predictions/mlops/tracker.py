@@ -203,9 +203,11 @@ class Tracker:
             metric_summary[entry["name"]] = entry["value"]
 
         # ---- build run index record ----
+        model_name = ctx.config_snapshot.get("model", {}).get("name", "unknown")
         record: dict = {
             "run_id": ctx.run_id,
             "timestamp": ctx.timestamp,
+            "model_name": model_name,
             "dataset": ctx.dataset,
             "config_path": ctx.config_path,
             "output_dir": str(ctx.output_dir),

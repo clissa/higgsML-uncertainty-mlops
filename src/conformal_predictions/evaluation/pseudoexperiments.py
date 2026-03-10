@@ -235,10 +235,10 @@ def evaluate_on_test_set(
 
                     plot_id = _dt.date.today().strftime("%Y%m%d")
                     ctx.save_artifact(
-                        f"stats/test_CI_plots-{plot_id}_{model_name}.png",
+                        f"stats/test_CI_plots-{plot_id}.png",
                         type="plot",
                         format="png",
-                        description=f"Confidence interval plot — {model_name}",
+                        description="Confidence interval plot (test set)",
                     )
 
                 # CI table
@@ -253,15 +253,15 @@ def evaluate_on_test_set(
                     }
                 )
                 ci_df.to_csv(
-                    stats_dir / f"confidence_intervals_{model_name}.csv",
+                    stats_dir / "confidence_intervals.csv",
                     index=False,
                 )
                 if ctx is not None:
                     ctx.save_artifact(
-                        f"stats/confidence_intervals_{model_name}.csv",
+                        "stats/confidence_intervals.csv",
                         type="scores",
                         format="csv",
-                        description=f"Confidence intervals per experiment — {model_name}",
+                        description="Confidence intervals per experiment (test set)",
                     )
 
         results[model_name] = entry

@@ -74,7 +74,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--model",
         type=str,
         default=None,
-        help="Override the model family (mlp, glm, random_forest).",
+        help="Override the model family. Currently only 'mlp' is supported.",
     )
     return parser.parse_args(argv)
 

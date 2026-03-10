@@ -111,11 +111,17 @@ def generate_run_report(
     lines.append("## Run Metadata\n")
     config_path = getattr(ctx, "config_path", None) or "—"
     git_commit = getattr(ctx, "git_commit", None) or "—"
+    model_name = (
+        ctx.config_snapshot.get("model", {}).get("name", "unknown")
+        if hasattr(ctx, "config_snapshot")
+        else "unknown"
+    )
     lines += [
         "| Field         | Value |",
         "|---------------|-------|",
         f"| **Run ID**    | `{ctx.run_id}` |",
         f"| **Timestamp** | {ctx.timestamp} |",
+        f"| **Model**     | `{model_name}` |",
         f"| **Dataset**   | {ctx.dataset} |",
         f"| **Git Commit**| `{git_commit}` |",
         f"| **Config**    | `{config_path}` |",

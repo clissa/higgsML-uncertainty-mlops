@@ -1,8 +1,9 @@
 """Model factory for the conformal-prediction pipeline.
 
-Builds a **single** sklearn estimator from a :class:`ModelConfig`.
-Supported model families: MLP (default), GLM (logistic regression),
-Random Forest.
+Builds a **single** MLP estimator from a :class:`ModelConfig`.
+
+This pipeline follows a single-model-per-run design: one config, one
+model, one run.  Only ``"mlp"`` is supported in the main path.
 
 Usage::
 
@@ -18,42 +19,18 @@ from __future__ import annotations
 import warnings
 from typing import Dict
 
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 
 from conformal_predictions.config import ModelConfig
 
-# Display name for each model family
-_DISPLAY_NAMES = {
-    "mlp": "MLP",
-    "glm": "GLM",
-    "random_forest": "Random Forest",
-}
+# Display name for MLP
+_DISPLAY_NAME = "MLP"
 
-# Default hyperparameters per model family (overridable via ModelConfig.params)
-_DEFAULTS: Dict[str, dict] = {
-    "mlp": {
-        "hidden_layer_sizes": (32, 16),
-        "activation": "relu",
-        "max_iter": 1000,
-    },
-    "glm": {
-        "penalty": "l2",
-        "solver": "lbfgs",
-        "max_iter": 1000,
-    },
-    "random_forest": {
-        "n_estimators": 50,
-        "criterion": "gini",
-        "n_jobs": 1,
-    },
-}
-
-_CLASSES = {
-    "mlp": MLPClassifier,
-    "glm": LogisticRegression,
-    "random_forest": RandomForestClassifier,
+# Default hyperparameters (overridable via ModelConfig.params)
+_DEFAULTS: dict = {
+    "hidden_layer_sizes": (32, 16),
+    "activation": "relu",
+    "max_iter": 1000,
 }
 
 
@@ -61,25 +38,21 @@ def build_model(
     model_config: ModelConfig,
     seed: int,
 ) -> Dict[str, object]:
-    """Instantiate a single model from *model_config*.
+    """Instantiate a single MLP from *model_config*.
 
-    Returns a ``{display_name: estimator}`` dict (single entry) to keep
-    downstream code — which already iterates ``dict.items()`` — working
-    unchanged.
+    Returns a ``{"MLP": estimator}`` dict so that downstream code that
+    iterates ``dict.items()`` continues to work unchanged.
 
     Parameters
     ----------
     model_config : ModelConfig
-        Model family and optional hyperparameter overrides.
+        Model config.  Only ``name="mlp"`` is supported.
     seed : int
         Random state for reproducibility.
     """
-    name = model_config.name
-    cls = _CLASSES[name]
-    display = _DISPLAY_NAMES[name]
-
+    # ModelConfig.__post_init__ already guards against non-mlp names.
     # Merge: defaults ← user params ← seed
-    kwargs = {**_DEFAULTS[name], **model_config.params, "random_state": seed}
+    kwargs = {**_DEFAULTS, **model_config.params, "random_state": seed}
 
     # Convert list → tuple for hidden_layer_sizes (YAML parses as list)
     if "hidden_layer_sizes" in kwargs and isinstance(
@@ -87,7 +60,7 @@ def build_model(
     ):
         kwargs["hidden_layer_sizes"] = tuple(kwargs["hidden_layer_sizes"])
 
-    return {display: cls(**kwargs)}
+    return {_DISPLAY_NAME: MLPClassifier(**kwargs)}
 
 
 # ---------------------------------------------------------------------------
@@ -101,13 +74,19 @@ def build_default_models(seed: int, n_jobs: int = 1) -> Dict[str, object]:
     .. deprecated::
         Use :func:`build_model` with a :class:`ModelConfig` instead.
         This function is kept only for backward-compatible legacy scripts.
+        The main pipeline no longer trains multiple models per run.
     """
     warnings.warn(
-        "build_default_models() is deprecated. "
-        "Use build_model(ModelConfig(...), seed) instead.",
+        "build_default_models() is deprecated and will be removed in a future "
+        "version.  Use build_model(ModelConfig(name='mlp'), seed) for the "
+        "single-model pipeline.",
         DeprecationWarning,
         stacklevel=2,
     )
+    # Lazy imports — GLM/RF are not part of the main pipeline any more.
+    from sklearn.ensemble import RandomForestClassifier  # noqa: PLC0415
+    from sklearn.linear_model import LogisticRegression  # noqa: PLC0415
+
     return {
         "GLM": LogisticRegression(
             penalty="l2",

@@ -398,12 +398,12 @@ class Trainer:
             print(f"  {name} score stats: mean={mu:.4f} ± std={sd:.4f}")
             if self.tracker is not None:
                 self.tracker.log(
-                    wandb_key(CALIBRATION, "nonconformity", f"{name}_score_mean"),
+                    wandb_key(CALIBRATION, "nonconformity", "score_mean"),
                     mu,
                     stage="calibrate",
                 )
                 self.tracker.log(
-                    wandb_key(CALIBRATION, "nonconformity", f"{name}_score_std"),
+                    wandb_key(CALIBRATION, "nonconformity", "score_std"),
                     sd,
                     stage="calibrate",
                 )
@@ -414,17 +414,17 @@ class Trainer:
                 width = qh - ql
                 if self.tracker is not None:
                     self.tracker.log(
-                        wandb_key(CALIBRATION, "nonconformity", f"{name}_q_low"),
+                        wandb_key(CALIBRATION, "nonconformity", "q_low"),
                         ql,
                         stage="calibrate",
                     )
                     self.tracker.log(
-                        wandb_key(CALIBRATION, "nonconformity", f"{name}_q_high"),
+                        wandb_key(CALIBRATION, "nonconformity", "q_high"),
                         qh,
                         stage="calibrate",
                     )
                     self.tracker.log(
-                        wandb_key(CALIBRATION, "nonconformity", f"{name}_width"),
+                        wandb_key(CALIBRATION, "nonconformity", "width"),
                         width,
                         stage="calibrate",
                     )
@@ -564,7 +564,7 @@ class Trainer:
             y_proba_train = self._train_predictions.get(model_name)
 
             if "y_true_val" in raw and "y_proba_val" in raw:
-                path = ctx.plots_dir / f"{safe_name}_roc_curve.png"
+                path = ctx.plots_dir / "roc_curve.png"
                 plot_roc_curve(
                     raw["y_true_val"],
                     raw["y_proba_val"],
@@ -575,19 +575,19 @@ class Trainer:
                     y_score_train=y_proba_train,
                 )
                 ctx.save_artifact(
-                    f"plots/{safe_name}_roc_curve.png",
+                    "plots/roc_curve.png",
                     type="plot",
                     format="png",
                     description=f"ROC curve — {model_name}",
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(EVALUATION, "plots", f"{safe_name}_roc_curve"), path
+                        wandb_key(EVALUATION, "plots", "roc_curve"), path
                     )
 
             # Joint train+val PR curve
             if "y_true_val" in raw and "y_proba_val" in raw:
-                path = ctx.plots_dir / f"{safe_name}_pr_curve.png"
+                path = ctx.plots_dir / "pr_curve.png"
                 plot_pr_curve(
                     raw["y_true_val"],
                     raw["y_proba_val"],
@@ -598,19 +598,19 @@ class Trainer:
                     y_score_train=y_proba_train,
                 )
                 ctx.save_artifact(
-                    f"plots/{safe_name}_pr_curve.png",
+                    "plots/pr_curve.png",
                     type="plot",
                     format="png",
                     description=f"PR curve — {model_name}",
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(EVALUATION, "plots", f"{safe_name}_pr_curve"), path
+                        wandb_key(EVALUATION, "plots", "pr_curve"), path
                     )
 
             # Predictions ECDF (train vs val)
             if "y_proba_val" in raw and y_proba_train is not None:
-                path = ctx.plots_dir / f"{safe_name}_predictions_ecdf.png"
+                path = ctx.plots_dir / "predictions_ecdf.png"
                 plot_predictions_ecdf(
                     y_proba_train,
                     raw["y_proba_val"],
@@ -619,21 +619,21 @@ class Trainer:
                     dpi=dpi,
                 )
                 ctx.save_artifact(
-                    f"plots/{safe_name}_predictions_ecdf.png",
+                    "plots/predictions_ecdf.png",
                     type="plot",
                     format="png",
                     description=f"Predictions ECDF — {model_name}",
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(EVALUATION, "plots", f"{safe_name}_predictions_ecdf"),
+                        wandb_key(EVALUATION, "plots", "predictions_ecdf"),
                         path,
                     )
 
-            # μ̂ distribution
+            # μ̂ distribution (test set)
             mu_hat_vals = raw.get("mu_hat", [])
             if mu_hat_vals:
-                path = ctx.plots_dir / f"{safe_name}_mu_hat_distribution.png"
+                path = ctx.plots_dir / "mu_hat_distribution_test.png"
                 plot_mu_hat_distribution(
                     mu_hat_vals,
                     output_path=path,
@@ -641,16 +641,14 @@ class Trainer:
                     dpi=dpi,
                 )
                 ctx.save_artifact(
-                    f"plots/{safe_name}_mu_hat_distribution.png",
+                    "plots/mu_hat_distribution_test.png",
                     type="plot",
                     format="png",
-                    description=f"μ̂ distribution — {model_name}",
+                    description=f"μ̂ distribution (test set) — {model_name}",
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(
-                            CALIBRATION, "plots", f"{safe_name}_mu_hat_distribution"
-                        ),
+                        wandb_key(CALIBRATION, "plots", "mu_hat_distribution_test"),
                         path,
                     )
 
@@ -659,7 +657,7 @@ class Trainer:
             upper = raw.get("upper")
             if lower is not None and upper is not None:
                 widths = np.asarray(upper) - np.asarray(lower)
-                path = ctx.plots_dir / f"{safe_name}_ci_width_distribution.png"
+                path = ctx.plots_dir / "ci_width_distribution.png"
                 plot_ci_width_distribution(
                     widths,
                     output_path=path,
@@ -667,27 +665,23 @@ class Trainer:
                     dpi=dpi,
                 )
                 ctx.save_artifact(
-                    f"plots/{safe_name}_ci_width_distribution.png",
+                    "plots/ci_width_distribution.png",
                     type="plot",
                     format="png",
                     description=f"CI width distribution — {model_name}",
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(
-                            CALIBRATION,
-                            "plots",
-                            f"{safe_name}_ci_width_distribution",
-                        ),
+                        wandb_key(CALIBRATION, "plots", "ci_width_distribution"),
                         path,
                     )
 
-            # Collect coverage for combined chart
+            # Collect coverage for CI chart
             cal = eval_results.get(model_name, {}).get("calibration", {})
             if "coverage" in cal:
                 coverages[model_name] = cal["coverage"]
 
-        # CI coverage comparison (all models on one chart)
+        # CI coverage chart
         if coverages:
             target_cov = 1.0 - alpha
             path = ctx.plots_dir / "ci_coverage.png"
@@ -696,7 +690,7 @@ class Trainer:
                 "plots/ci_coverage.png",
                 type="plot",
                 format="png",
-                description="CI coverage comparison across models",
+                description="CI coverage",
             )
             if self.tracker is not None:
                 self.tracker.log_image(
@@ -774,7 +768,7 @@ class Trainer:
 
             if scores is not None and len(scores) > 0:
                 # Nonconformity distribution (histogram)
-                path = ctx.plots_dir / f"{safe_name}_nonconformity_scores.png"
+                path = ctx.plots_dir / "nonconformity_scores.png"
                 plot_nonconformity_scores(
                     scores,
                     alpha,
@@ -783,23 +777,19 @@ class Trainer:
                     dpi=dpi,
                 )
                 ctx.save_artifact(
-                    f"plots/{safe_name}_nonconformity_scores.png",
+                    "plots/nonconformity_scores.png",
                     type="plot",
                     format="png",
                     description=f"Nonconformity scores — {model_name}",
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(
-                            CALIBRATION,
-                            "plots",
-                            f"{safe_name}_nonconformity_distribution",
-                        ),
+                        wandb_key(CALIBRATION, "plots", "nonconformity_distribution"),
                         path,
                     )
 
                 # Nonconformity ECDF
-                path_ecdf = ctx.plots_dir / f"{safe_name}_nonconformity_ecdf.png"
+                path_ecdf = ctx.plots_dir / "nonconformity_ecdf.png"
                 plot_nonconformity_ecdf(
                     scores,
                     output_path=path_ecdf,
@@ -807,18 +797,14 @@ class Trainer:
                     dpi=dpi,
                 )
                 ctx.save_artifact(
-                    f"plots/{safe_name}_nonconformity_ecdf.png",
+                    "plots/nonconformity_ecdf.png",
                     type="plot",
                     format="png",
                     description=f"Nonconformity ECDF — {model_name}",
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(
-                            CALIBRATION,
-                            "plots",
-                            f"{safe_name}_nonconformity_ecdf",
-                        ),
+                        wandb_key(CALIBRATION, "plots", "nonconformity_ecdf"),
                         path_ecdf,
                     )
 
@@ -833,7 +819,7 @@ class Trainer:
                 # Use prediction scores as proxy for per-sample nonconformity
                 mask0 = y_calib == 0
                 mask1 = y_calib == 1
-                path_bc = ctx.plots_dir / f"{safe_name}_nonconformity_by_class.png"
+                path_bc = ctx.plots_dir / "nonconformity_by_class.png"
                 plot_nonconformity_by_class(
                     proba_calib[mask0],
                     proba_calib[mask1],
@@ -842,7 +828,7 @@ class Trainer:
                     dpi=dpi,
                 )
                 ctx.save_artifact(
-                    f"plots/{safe_name}_nonconformity_by_class.png",
+                    "plots/nonconformity_by_class.png",
                     type="plot",
                     format="png",
                     description=f"Nonconformity by class — {model_name}",
@@ -852,7 +838,7 @@ class Trainer:
                         wandb_key(
                             CALIBRATION,
                             "plots",
-                            f"{safe_name}_nonconformity_distribution_by_class",
+                            "nonconformity_distribution_by_class",
                         ),
                         path_bc,
                     )
@@ -862,7 +848,7 @@ class Trainer:
             q_highs = calibration_result.per_block_q_high.get(model_name, [])
             if q_lows and q_highs:
                 # q_low distribution
-                path_ql = ctx.plots_dir / f"{safe_name}_q_low_distribution.png"
+                path_ql = ctx.plots_dir / "q_low_distribution.png"
                 plot_distribution(
                     q_lows,
                     output_path=path_ql,
@@ -872,23 +858,19 @@ class Trainer:
                     dpi=dpi,
                 )
                 ctx.save_artifact(
-                    f"plots/{safe_name}_q_low_distribution.png",
+                    "plots/q_low_distribution.png",
                     type="plot",
                     format="png",
                     description=f"q_low distribution — {model_name}",
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(
-                            CALIBRATION,
-                            "plots",
-                            f"{safe_name}_q_low_distribution",
-                        ),
+                        wandb_key(CALIBRATION, "plots", "q_low_distribution"),
                         path_ql,
                     )
 
                 # q_high distribution
-                path_qh = ctx.plots_dir / f"{safe_name}_q_high_distribution.png"
+                path_qh = ctx.plots_dir / "q_high_distribution.png"
                 plot_distribution(
                     q_highs,
                     output_path=path_qh,
@@ -898,24 +880,20 @@ class Trainer:
                     dpi=dpi,
                 )
                 ctx.save_artifact(
-                    f"plots/{safe_name}_q_high_distribution.png",
+                    "plots/q_high_distribution.png",
                     type="plot",
                     format="png",
                     description=f"q_high distribution — {model_name}",
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(
-                            CALIBRATION,
-                            "plots",
-                            f"{safe_name}_q_high_distribution",
-                        ),
+                        wandb_key(CALIBRATION, "plots", "q_high_distribution"),
                         path_qh,
                     )
 
                 # CI width distribution (per-block)
                 block_widths = [qh - ql for ql, qh in zip(q_lows, q_highs)]
-                path_bw = ctx.plots_dir / f"{safe_name}_block_ci_width_distribution.png"
+                path_bw = ctx.plots_dir / "block_ci_width_distribution.png"
                 plot_distribution(
                     block_widths,
                     output_path=path_bw,
@@ -925,18 +903,14 @@ class Trainer:
                     dpi=dpi,
                 )
                 ctx.save_artifact(
-                    f"plots/{safe_name}_block_ci_width_distribution.png",
+                    "plots/block_ci_width_distribution.png",
                     type="plot",
                     format="png",
                     description=f"Per-block CI width distribution — {model_name}",
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(
-                            CALIBRATION,
-                            "plots",
-                            f"{safe_name}_block_ci_width_distribution",
-                        ),
+                        wandb_key(CALIBRATION, "plots", "block_ci_width_distribution"),
                         path_bw,
                     )
 
@@ -964,7 +938,7 @@ class Trainer:
                 for metric_name, value in perf.items():
                     if isinstance(value, (int, float)):
                         self.tracker.log(
-                            wandb_key(CALIBRATION, "metrics", f"{name}_{metric_name}"),
+                            wandb_key(CALIBRATION, "metrics", metric_name),
                             float(value),
                             stage="calibrate",
                         )
@@ -990,7 +964,7 @@ class Trainer:
                 and y_proba_train is not None
             ):
                 # Confusion matrix — train
-                path_cm = ctx.plots_dir / f"{safe_name}_train_confusion_matrix.png"
+                path_cm = ctx.plots_dir / "train_confusion_matrix.png"
                 plot_confusion_matrix(
                     self._y_train,
                     y_pred_train,
@@ -999,16 +973,14 @@ class Trainer:
                     dpi=dpi,
                 )
                 ctx.save_artifact(
-                    f"plots/{safe_name}_train_confusion_matrix.png",
+                    "plots/train_confusion_matrix.png",
                     type="plot",
                     format="png",
                     description=f"Confusion matrix (train) — {model_name}",
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(
-                            ERROR_ANALYSIS, "train", f"{safe_name}_confusion_matrix"
-                        ),
+                        wandb_key(ERROR_ANALYSIS, "train", "confusion_matrix"),
                         path_cm,
                     )
 
@@ -1019,13 +991,11 @@ class Trainer:
                     y_proba_train,
                     X=self._X_train,
                 )
-                csv_path = (
-                    ctx.output_dir / "stats" / f"{safe_name}_train_top_errors.csv"
-                )
+                csv_path = ctx.output_dir / "stats" / "train_top_errors.csv"
                 csv_path.parent.mkdir(parents=True, exist_ok=True)
                 df_errors.to_csv(csv_path, index=False)
                 ctx.save_artifact(
-                    f"stats/{safe_name}_train_top_errors.csv",
+                    "stats/train_top_errors.csv",
                     type="error_analysis",
                     format="csv",
                     description=f"Top errors (train) — {model_name}",
@@ -1034,9 +1004,7 @@ class Trainer:
                     tbl = build_top_errors_wandb_table(df_errors)
                     if tbl is not None:
                         self.tracker.log_table(
-                            wandb_key(
-                                ERROR_ANALYSIS, "train", f"{safe_name}_top_errors"
-                            ),
+                            wandb_key(ERROR_ANALYSIS, "train", "top_errors"),
                             tbl,
                         )
 
@@ -1048,7 +1016,7 @@ class Trainer:
                 y_pred_val = (y_proba_val > self.config.threshold).astype(int)
 
                 # Confusion matrix — val/test
-                path_cm_v = ctx.plots_dir / f"{safe_name}_test_confusion_matrix.png"
+                path_cm_v = ctx.plots_dir / "test_confusion_matrix.png"
                 plot_confusion_matrix(
                     y_true_val,
                     y_pred_val,
@@ -1057,16 +1025,14 @@ class Trainer:
                     dpi=dpi,
                 )
                 ctx.save_artifact(
-                    f"plots/{safe_name}_test_confusion_matrix.png",
+                    "plots/test_confusion_matrix.png",
                     type="plot",
                     format="png",
                     description=f"Confusion matrix (test/val) — {model_name}",
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(
-                            ERROR_ANALYSIS, "test", f"{safe_name}_confusion_matrix"
-                        ),
+                        wandb_key(ERROR_ANALYSIS, "test", "confusion_matrix"),
                         path_cm_v,
                     )
 
@@ -1076,13 +1042,11 @@ class Trainer:
                     y_pred_val,
                     y_proba_val,
                 )
-                csv_path_v = (
-                    ctx.output_dir / "stats" / f"{safe_name}_test_top_errors.csv"
-                )
+                csv_path_v = ctx.output_dir / "stats" / "test_top_errors.csv"
                 csv_path_v.parent.mkdir(parents=True, exist_ok=True)
                 df_errors_v.to_csv(csv_path_v, index=False)
                 ctx.save_artifact(
-                    f"stats/{safe_name}_test_top_errors.csv",
+                    "stats/test_top_errors.csv",
                     type="error_analysis",
                     format="csv",
                     description=f"Top errors (test/val) — {model_name}",
@@ -1091,9 +1055,7 @@ class Trainer:
                     tbl_v = build_top_errors_wandb_table(df_errors_v)
                     if tbl_v is not None:
                         self.tracker.log_table(
-                            wandb_key(
-                                ERROR_ANALYSIS, "test", f"{safe_name}_top_errors"
-                            ),
+                            wandb_key(ERROR_ANALYSIS, "test", "top_errors"),
                             tbl_v,
                         )
 

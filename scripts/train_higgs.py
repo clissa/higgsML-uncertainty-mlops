@@ -1,5 +1,11 @@
 """Training script for the HiggsML (parquet) pipeline.
 
+.. deprecated::
+    This script is a legacy multi-model entrypoint and is kept for reference
+    only.  It is out of the main pipeline path.
+    Use ``scripts/run_train.py --config configs/train_toy.yaml`` (or a Higgs
+    config) with the single-model MLP pipeline instead.
+
 TODO Phase 1b: Refactor to use ``conformal_predictions.training.trainer.Trainer``
 with a pluggable data loader instead of the bespoke data-loading functions below.
 """
@@ -319,6 +325,13 @@ def get_model_efficiencies(model, X_ref, y_ref, cfg: Settings) -> Tuple[float, f
 
 
 def main() -> None:
+    import warnings
+    warnings.warn(
+        "train_higgs.py is a legacy multi-model script and is no longer the main "
+        "pipeline entrypoint.  Use scripts/run_train.py with a single MLP config.",
+        DeprecationWarning,
+        stacklevel=1,
+    )
     start_time = datetime.now()
     print(f"Script started at {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     init_time = start_time

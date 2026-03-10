@@ -41,7 +41,12 @@ from typing import List, Optional, Sequence, Tuple
 # ---------------------------------------------------------------------------
 
 DEFAULT_INDEX = "results/runs_index.json"
-DEFAULT_METRICS = ["accuracy", "coverage", "ci_score", "width"]
+DEFAULT_METRICS = [
+    "Evaluation/test/accuracy",
+    "Calibration/metrics/coverage",
+    "Calibration/metrics/ci_score",
+    "Calibration/metrics/width",
+]
 
 # ---------------------------------------------------------------------------
 # Core logic
@@ -90,37 +95,17 @@ def filter_runs(
     return result
 
 
-def _aggregate_metric(flat_metrics: dict, suffix: str) -> Optional[float]:
-    """Average all metric values whose key ends with *suffix*.
+def _aggregate_metric(flat_metrics: dict, key: str) -> Optional[float]:
+    """Return the metric value for *key* from *flat_metrics*.
 
-    Handles the ``{model_name}.{metric_suffix}`` naming convention used
-    in the run index.  For example, suffix ``"roc_auc"`` matches
-    ``"GLM.roc_auc"`` and ``"Random Forest.roc_auc"``.
-
-    Special cases for calibration metrics which are stored as
-    ``{model}.calib_coverage`` → suffix ``"coverage"``.
+    Accepts the full slash-key (e.g. ``"Evaluation/test/accuracy"``) or a
+    bare name for exact match.  The old dotted-model-prefix convention is
+    no longer supported.
     """
-    calib_map = {
-        "coverage": "calib_coverage",
-        "width": "calib_width",
-        "mean_width": "calib_width",
-        "ci_score": "calib_ci_score",
-    }
-    suffixes_to_try = [suffix]
-    if suffix in calib_map:
-        suffixes_to_try.append(calib_map[suffix])
-
-    matched: List[float] = []
-    for key, val in flat_metrics.items():
-        for s in suffixes_to_try:
-            if key == s or key.endswith(f".{s}"):
-                if isinstance(val, (int, float)):
-                    matched.append(float(val))
-                break
-
-    if not matched:
-        return None
-    return sum(matched) / len(matched)
+    if key in flat_metrics:
+        v = flat_metrics[key]
+        return float(v) if isinstance(v, (int, float)) else None
+    return None
 
 
 def build_table(
@@ -134,7 +119,7 @@ def build_table(
     headers : list of str
     rows : list of list of str
     """
-    headers = ["run_id", "timestamp", "dataset"] + list(metric_suffixes)
+    headers = ["run_id", "timestamp", "dataset", "model"] + list(metric_suffixes)
     rows = []
     for run in runs:
         ts = run.get("timestamp", "—")
@@ -151,6 +136,7 @@ def build_table(
             run.get("run_id", "—"),
             ts,
             run.get("dataset", "—"),
+            run.get("model_name", "—"),
         ]
         for suffix in metric_suffixes:
             val = _aggregate_metric(flat_metrics, suffix)

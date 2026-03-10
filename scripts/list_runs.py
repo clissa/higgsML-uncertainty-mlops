@@ -23,29 +23,28 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from conformal_predictions.mlops.run_index import load_index
 
-# Key metrics to display — subset of what Tracker logs.
+# Key metrics to display — full slash-key taxonomy used by the tracker.
+# Format: Section/subsection/name (e.g. "Evaluation/test/accuracy").
 _DISPLAY_METRICS = [
-    # eval metrics (first model found wins)
-    "accuracy",
-    "f1",
-    "coverage",
-    "ci_score",
-    "calib_coverage",
-    "calib_ci_score",
+    "Evaluation/test/accuracy",
+    "Evaluation/test/f1",
+    "Calibration/metrics/coverage",
+    "Calibration/metrics/ci_score",
 ]
 
 DEFAULT_INDEX = "results/runs_index.json"
 
 
 def _pick_metric(metrics: dict, key: str) -> str:
-    """Return the first matching value from metrics, formatted as a string."""
-    # exact match first
+    """Return the metric value for the given slash-key, formatted as a string.
+
+    Accepts the full slash-key (e.g. "Evaluation/test/accuracy") or a bare
+    name (e.g. "accuracy") for exact match only.  The old dotted-model-prefix
+    convention is no longer supported.
+    """
     if key in metrics:
-        return f"{metrics[key]:.4f}"
-    # prefix match: find first key that ends with f".{key}"
-    for k, v in metrics.items():
-        if k.endswith(f".{key}") and isinstance(v, (int, float)):
-            return f"{v:.4f}"
+        v = metrics[key]
+        return f"{v:.4f}" if isinstance(v, (int, float)) else str(v)
     return "—"
 
 
@@ -128,8 +127,13 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     # --- build table ---
-    metric_keys = ["accuracy", "f1", "calib_coverage", "calib_ci_score"]
-    headers = ["run_id", "timestamp", "dataset", "output_dir"] + metric_keys
+    metric_keys = [
+        "Evaluation/test/accuracy",
+        "Evaluation/test/f1",
+        "Calibration/metrics/coverage",
+        "Calibration/metrics/ci_score",
+    ]
+    headers = ["run_id", "timestamp", "dataset", "model", "output_dir"] + metric_keys
 
     rows = []
     for r in records:
@@ -138,6 +142,7 @@ def main(argv: list[str] | None = None) -> None:
             r.get("run_id", "?")[:8],
             r.get("timestamp", "?")[:19],
             r.get("dataset", "?"),
+            r.get("model_name", "?"),
             str(r.get("output_dir", "?"))[-40:],
         ] + [_pick_metric(metrics, k) for k in metric_keys]
         rows.append(row)

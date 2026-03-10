@@ -20,9 +20,9 @@ from typing import Optional, Sequence, Tuple
 import yaml
 
 # ---------------------------------------------------------------------------
-# Supported model names
+# Supported model names  (Option B: MLP-only single-model pipeline)
 # ---------------------------------------------------------------------------
-VALID_MODEL_NAMES: tuple = ("mlp", "glm", "random_forest")
+VALID_MODEL_NAMES: tuple = ("mlp",)
 
 # ---------------------------------------------------------------------------
 # Default: 1-sigma significance level  (alpha ≈ 0.3173)
@@ -48,11 +48,12 @@ class ModelConfig:
     Parameters
     ----------
     name : str
-        Model family: ``"mlp"`` (default), ``"glm"``, or ``"random_forest"``.
+        Model family.  Only ``"mlp"`` (default) is supported in the
+        current single-model pipeline.  One run = one model.
     params : dict
-        Model-specific hyperparameters passed as keyword arguments to the
-        sklearn constructor.  Unknown keys are silently forwarded so that
-        sweeps can override any sklearn parameter.
+        Model hyperparameters forwarded to the sklearn/PyTorch constructor.
+        Unknown keys are silently forwarded so sweeps can override any
+        parameter without config changes.
     """
 
     name: str = "mlp"
@@ -62,7 +63,9 @@ class ModelConfig:
         if self.name not in VALID_MODEL_NAMES:
             raise ValueError(
                 f"Unknown model name {self.name!r}. "
-                f"Valid options: {VALID_MODEL_NAMES}"
+                f"Valid options: {VALID_MODEL_NAMES}. "
+                "This pipeline is MLP-only (one model per run). "
+                "Use scripts/run_train.py with the default config."
             )
 
     def to_dict(self) -> dict:

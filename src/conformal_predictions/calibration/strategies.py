@@ -291,29 +291,21 @@ def run_calibration(
             output_dir=plots_dir,
         )
         if ctx is not None:
-            for model_name in models:
-                ctx.save_artifact(
-                    f"plots/{calib_config.target}_scores_distribution_{model_name}.png",
-                    type="plot",
-                    format="png",
-                    description=f"Nonconformity score distribution — {model_name}",
-                )
             ctx.save_artifact(
-                f"plots/{calib_config.target}_scores_distribution_comparison.png",
+                f"plots/{calib_config.target}_scores_distribution.png",
                 type="plot",
                 format="png",
-                description="Nonconformity score distribution comparison across models",
+                description="Nonconformity score distribution (calibration set)",
             )
 
         if mu_hat and mu_hat_stats:
             plot_mu_hat_distribution(mu_hat, mu_hat_stats, output_dir=plots_dir)
             if ctx is not None:
-                for model_name in models:
-                    ctx.save_artifact(
-                        f"plots/mu_hat_distribution_{model_name}.png",
-                        type="plot",
-                        format="png",
-                        description=f"mu_hat calibration distribution — {model_name}",
-                    )
+                ctx.save_artifact(
+                    "plots/mu_hat_calibration_distribution.png",
+                    type="plot",
+                    format="png",
+                    description="mu_hat calibration distribution",
+                )
 
     return result
