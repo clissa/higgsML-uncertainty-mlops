@@ -117,7 +117,7 @@ def evaluate_on_test_set(
     output_dir: Optional[Path] = None,
     ref_efficiencies_dict: Optional[Dict[str, Sequence[float]]] = None,
     ctx: Optional["RunContext"] = None,
-) -> Dict[str, dict]:
+) -> Tuple[Dict[str, dict], Dict[str, dict]]:
     """Full evaluation: inference → CIs → performance + calibration metrics.
 
     Parameters
@@ -132,8 +132,12 @@ def evaluate_on_test_set(
 
     Returns
     -------
-    dict
+    results : dict
         Nested dict: ``{model_name: {"performance": {...}, "calibration": {...}}}``.
+    raw_data : dict
+        ``{model_name: {"mu_hat": List[float], "lower": ndarray|None,
+        "upper": ndarray|None, "mu_true": List[float]}}``.
+        Used by the plot pipeline (Phase 4).
     """
     # 1. Inference
     mu_hat_test, mu_true_list, gamma_true_list, per_exp_metrics = inference_on_test_set(
@@ -145,6 +149,17 @@ def evaluate_on_test_set(
     )
 
     results: Dict[str, dict] = {}
+
+    # raw per-model arrays for Phase-4 plot generation
+    raw_data: Dict[str, dict] = {
+        name: {
+            "mu_hat": mu_hat_test.get(name, []),
+            "lower": None,
+            "upper": None,
+            "mu_true": mu_true_list,
+        }
+        for name in models
+    }
 
     for model_name in models:
         entry: dict = {"performance": {}, "calibration": {}}
@@ -195,6 +210,8 @@ def evaluate_on_test_set(
                 epsilon=eval_config.ci_score_epsilon,
             )
             entry["calibration"] = calib_metrics
+            raw_data[model_name]["lower"] = lower
+            raw_data[model_name]["upper"] = upper
 
             # --- artifact persistence ---
             if output_dir and eval_config.save_artifacts:
@@ -285,4 +302,4 @@ def evaluate_on_test_set(
                     description="Calibration quality metrics (coverage, width, ci_score)",
                 )
 
-    return results
+    return results, raw_data

@@ -47,7 +47,16 @@ from conformal_predictions.config import (
 )
 from conformal_predictions.data.toy import load_pseudo_experiment
 from conformal_predictions.data_viz import contourplot_data
+from conformal_predictions.evaluation.plots import (
+    plot_ci_coverage,
+    plot_ci_width_distribution,
+    plot_mu_hat_distribution,
+    plot_nonconformity_scores,
+    plot_pr_curve,
+    plot_roc_curve,
+)
 from conformal_predictions.evaluation.pseudoexperiments import evaluate_on_test_set
+from conformal_predictions.evaluation.reports import generate_run_report
 from conformal_predictions.mlops.run_context import RunContext
 from conformal_predictions.training.core import (
     compute_model_efficiencies,
@@ -99,6 +108,9 @@ class Trainer:
         self._calib_meta: Optional[List[dict]] = None
         self._test_files: Optional[list] = None
         self._ref_efficiencies: Optional[Dict[str, Tuple[float, float]]] = None
+
+        # Populated by evaluate() — used by _generate_plots_and_report
+        self._raw_eval_data: Dict[str, dict] = {}
 
     # ------------------------------------------------------------------
     # Data loading
@@ -378,7 +390,7 @@ class Trainer:
             X_t, y_t, meta_t = load_pseudo_experiment(fp)
             test_data.append((X_t, y_t, meta_t))
 
-        results = evaluate_on_test_set(
+        results, raw_data = evaluate_on_test_set(
             self.models,
             self.scaler,
             test_data,
@@ -389,6 +401,14 @@ class Trainer:
             output_dir=self.run_ctx.output_dir,
             ctx=self.run_ctx,
         )
+
+        # Store raw arrays; add val-set probabilities for ROC/PR plots
+        self._raw_eval_data = raw_data
+        if self._X_val is not None and self._y_val is not None:
+            for name, model in self.models.items():
+                y_proba = model.predict_proba(self._X_val)[:, 1]
+                self._raw_eval_data.setdefault(name, {})["y_true_val"] = self._y_val
+                self._raw_eval_data[name]["y_proba_val"] = y_proba
 
         for name, res in results.items():
             perf = res.get("performance", {})
@@ -421,7 +441,166 @@ class Trainer:
                             stage="evaluate",
                         )
 
+        # Generate plots and report if enabled
+        if getattr(self.config, "reporting", None) is not None:
+            if self.config.reporting.generate_plots:
+                self._generate_plots_and_report(results, calibration_result)
+
         return results
+
+    # ------------------------------------------------------------------
+    # Plots + report (Phase 4)
+    # ------------------------------------------------------------------
+
+    def _generate_plots_and_report(
+        self,
+        eval_results: Dict[str, dict],
+        calibration_result: Optional[CalibrationResult],
+    ) -> None:
+        """Generate per-run plots, register artifacts, and write report.md."""
+        ctx = self.run_ctx
+        dpi = self.config.reporting.figure_dpi
+        alpha = self.config.calibration.alpha
+
+        coverages: Dict[str, float] = {}
+
+        for model_name in self.models:
+            safe_name = model_name.replace(" ", "_")
+            raw = self._raw_eval_data.get(model_name, {})
+
+            # ROC curve
+            if "y_true_val" in raw and "y_proba_val" in raw:
+                path = ctx.plots_dir / f"{safe_name}_roc_curve.png"
+                plot_roc_curve(
+                    raw["y_true_val"],
+                    raw["y_proba_val"],
+                    model_name,
+                    output_path=path,
+                    dpi=dpi,
+                )
+                ctx.save_artifact(
+                    f"plots/{safe_name}_roc_curve.png",
+                    type="plot",
+                    format="png",
+                    description=f"ROC curve — {model_name}",
+                )
+                self._log_wandb_image(f"{safe_name}_roc_curve", path)
+
+            # PR curve
+            if "y_true_val" in raw and "y_proba_val" in raw:
+                path = ctx.plots_dir / f"{safe_name}_pr_curve.png"
+                plot_pr_curve(
+                    raw["y_true_val"],
+                    raw["y_proba_val"],
+                    model_name,
+                    output_path=path,
+                    dpi=dpi,
+                )
+                ctx.save_artifact(
+                    f"plots/{safe_name}_pr_curve.png",
+                    type="plot",
+                    format="png",
+                    description=f"PR curve — {model_name}",
+                )
+                self._log_wandb_image(f"{safe_name}_pr_curve", path)
+
+            # Nonconformity scores
+            if calibration_result is not None and model_name in calibration_result.scores:
+                scores = calibration_result.scores[model_name]
+                if len(scores) > 0:
+                    path = ctx.plots_dir / f"{safe_name}_nonconformity_scores.png"
+                    plot_nonconformity_scores(
+                        scores,
+                        alpha,
+                        output_path=path,
+                        model_name=model_name,
+                        dpi=dpi,
+                    )
+                    ctx.save_artifact(
+                        f"plots/{safe_name}_nonconformity_scores.png",
+                        type="plot",
+                        format="png",
+                        description=f"Nonconformity scores — {model_name}",
+                    )
+                    self._log_wandb_image(f"{safe_name}_nonconformity_scores", path)
+
+            # μ̂ distribution
+            mu_hat_vals = raw.get("mu_hat", [])
+            if mu_hat_vals:
+                path = ctx.plots_dir / f"{safe_name}_mu_hat_distribution.png"
+                plot_mu_hat_distribution(
+                    mu_hat_vals,
+                    output_path=path,
+                    model_name=model_name,
+                    dpi=dpi,
+                )
+                ctx.save_artifact(
+                    f"plots/{safe_name}_mu_hat_distribution.png",
+                    type="plot",
+                    format="png",
+                    description=f"μ̂ distribution — {model_name}",
+                )
+                self._log_wandb_image(f"{safe_name}_mu_hat_distribution", path)
+
+            # CI width distribution
+            lower = raw.get("lower")
+            upper = raw.get("upper")
+            if lower is not None and upper is not None:
+                widths = np.asarray(upper) - np.asarray(lower)
+                path = ctx.plots_dir / f"{safe_name}_ci_width_distribution.png"
+                plot_ci_width_distribution(
+                    widths,
+                    output_path=path,
+                    model_name=model_name,
+                    dpi=dpi,
+                )
+                ctx.save_artifact(
+                    f"plots/{safe_name}_ci_width_distribution.png",
+                    type="plot",
+                    format="png",
+                    description=f"CI width distribution — {model_name}",
+                )
+                self._log_wandb_image(f"{safe_name}_ci_width_distribution", path)
+
+            # Collect coverage for combined chart
+            cal = eval_results.get(model_name, {}).get("calibration", {})
+            if "coverage" in cal:
+                coverages[model_name] = cal["coverage"]
+
+        # CI coverage comparison (all models on one chart)
+        if coverages:
+            target_cov = 1.0 - alpha
+            path = ctx.plots_dir / "ci_coverage.png"
+            plot_ci_coverage(coverages, target_cov, output_path=path, dpi=dpi)
+            ctx.save_artifact(
+                "plots/ci_coverage.png",
+                type="plot",
+                format="png",
+                description="CI coverage comparison across models",
+            )
+            self._log_wandb_image("ci_coverage", path)
+
+        # Markdown report
+        report_path = ctx.output_dir / "report.md"
+        generate_run_report(ctx, metrics=eval_results, output_path=report_path)
+        ctx.save_artifact(
+            "report.md",
+            type="report",
+            format="md",
+            description="Run summary report",
+        )
+        print(f"\nReport saved to {report_path}")
+
+    def _log_wandb_image(self, name: str, path: "Path") -> None:
+        """Log a PNG to wandb when enabled; fails silently otherwise."""
+        if not self.config.tracking.wandb_enabled:
+            return
+        try:
+            import wandb  # type: ignore
+
+            wandb.log({f"plots/{name}": wandb.Image(str(path))})
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Full pipeline (backward-compatible)

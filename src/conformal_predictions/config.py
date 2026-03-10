@@ -129,6 +129,25 @@ class TrackingConfig:
 
 
 @dataclass(frozen=True)
+class ReportingConfig:
+    """Configuration for plot and report generation.
+
+    Parameters
+    ----------
+    generate_plots : bool
+        Whether to generate and save per-run plots automatically.
+    figure_dpi : int
+        Resolution (dots per inch) for saved PNG figures.
+    """
+
+    generate_plots: bool = True
+    figure_dpi: int = 150
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class TrainingConfig:
     """Frozen configuration for a training run.
 
@@ -168,6 +187,9 @@ class TrainingConfig:
 
     # --- tracking (Phase 3) ---
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
+
+    # --- reporting (Phase 4) ---
+    reporting: ReportingConfig = field(default_factory=ReportingConfig)
 
     def to_dict(self) -> dict:
         """Serialise to a plain dict (for JSON / run-context snapshots)."""
@@ -225,6 +247,16 @@ def _build_tracking_config(raw: dict) -> "TrackingConfig":
     return TrackingConfig()
 
 
+def _build_reporting_config(raw: dict) -> "ReportingConfig":
+    """Build a ``ReportingConfig`` from a YAML ``reporting:`` section."""
+    reporting_raw = raw.get("reporting")
+    if reporting_raw and isinstance(reporting_raw, dict):
+        valid_keys = {f.name for f in fields(ReportingConfig)}
+        filtered = {k: v for k, v in reporting_raw.items() if k in valid_keys}
+        return ReportingConfig(**filtered)
+    return ReportingConfig()
+
+
 # ---------------------------------------------------------------------------
 # Public loader
 # ---------------------------------------------------------------------------
@@ -248,6 +280,7 @@ def load_training_config(path: str | Path) -> TrainingConfig:
         "calibration",
         "evaluation",
         "tracking",
+        "reporting",
     }
     filtered = {k: v for k, v in raw.items() if k in valid_keys}
 
@@ -259,5 +292,6 @@ def load_training_config(path: str | Path) -> TrainingConfig:
     filtered["calibration"] = _build_calibration_config(raw)
     filtered["evaluation"] = _build_evaluation_config(raw)
     filtered["tracking"] = _build_tracking_config(raw)
+    filtered["reporting"] = _build_reporting_config(raw)
 
     return TrainingConfig(**filtered)

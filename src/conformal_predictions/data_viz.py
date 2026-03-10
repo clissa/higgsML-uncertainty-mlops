@@ -435,3 +435,17 @@ def contourplot_data(
     plt.tight_layout()
     plt.savefig(output_dir / "data_contour.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 backward-compat re-exports from evaluation/plots.py
+# ---------------------------------------------------------------------------
+# These names are available here so that any code that does
+#   ``from conformal_predictions.data_viz import plot_roc_curve``
+# continues to work after the refactor.
+from conformal_predictions.evaluation.plots import (  # noqa: F401, E402
+    plot_ci_coverage,
+    plot_ci_width_distribution,
+    plot_roc_curve,
+    plot_pr_curve,
+)

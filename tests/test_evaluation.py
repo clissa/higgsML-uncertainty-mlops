@@ -4,12 +4,16 @@ Tests cover:
 - performance metrics (metrics.py)
 - calibration quality metrics (metrics.py)
 - ci_score challenge formula (metrics.py)
+- Phase 4: plot functions (plots.py)
+- Phase 4: run report generation (reports.py)
 """
 
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
+import matplotlib
 import numpy as np
 import pytest
 from sklearn.metrics import (
@@ -211,3 +215,229 @@ class TestMetricRegistry:
             "roc_auc",
         }
         assert set(METRIC_REGISTRY.keys()) == expected
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: plot functions
+# ---------------------------------------------------------------------------
+
+matplotlib.use("Agg")  # non-interactive backend for tests
+
+
+class TestPlotFunctions:
+    """Each plot function must save a PNG and return a matplotlib Figure."""
+
+    @pytest.fixture
+    def rng(self):
+        return np.random.default_rng(0)
+
+    def test_plot_roc_curve(self, tmp_path, rng):
+        from conformal_predictions.evaluation.plots import plot_roc_curve
+
+        y_true = rng.integers(0, 2, size=100)
+        y_score = rng.uniform(0, 1, size=100)
+        out = tmp_path / "roc.png"
+        fig = plot_roc_curve(y_true, y_score, "TestModel", output_path=out)
+        assert out.exists(), "PNG file was not created"
+        import matplotlib.pyplot as plt
+
+        assert isinstance(fig, plt.Figure)
+
+    def test_plot_pr_curve(self, tmp_path, rng):
+        from conformal_predictions.evaluation.plots import plot_pr_curve
+
+        y_true = rng.integers(0, 2, size=100)
+        y_score = rng.uniform(0, 1, size=100)
+        out = tmp_path / "pr.png"
+        fig = plot_pr_curve(y_true, y_score, "TestModel", output_path=out)
+        assert out.exists()
+        import matplotlib.pyplot as plt
+
+        assert isinstance(fig, plt.Figure)
+
+    def test_plot_nonconformity_scores(self, tmp_path, rng):
+        from conformal_predictions.evaluation.plots import plot_nonconformity_scores
+
+        scores = rng.uniform(-1, 1, size=200)
+        out = tmp_path / "ncs.png"
+        fig = plot_nonconformity_scores(scores, alpha=0.3173, output_path=out)
+        assert out.exists()
+        import matplotlib.pyplot as plt
+
+        assert isinstance(fig, plt.Figure)
+
+    def test_plot_mu_hat_distribution(self, tmp_path, rng):
+        from conformal_predictions.evaluation.plots import plot_mu_hat_distribution
+
+        vals = rng.normal(1.0, 0.2, size=300)
+        out = tmp_path / "mu_hat.png"
+        fig = plot_mu_hat_distribution(vals, output_path=out, model_name="GLM")
+        assert out.exists()
+        import matplotlib.pyplot as plt
+
+        assert isinstance(fig, plt.Figure)
+
+    def test_plot_ci_coverage(self, tmp_path):
+        from conformal_predictions.evaluation.plots import plot_ci_coverage
+
+        coverages = {"GLM": 0.72, "RF": 0.68, "MLP": 0.65}
+        out = tmp_path / "ci_cov.png"
+        fig = plot_ci_coverage(coverages, target_coverage=0.6827, output_path=out)
+        assert out.exists()
+        import matplotlib.pyplot as plt
+
+        assert isinstance(fig, plt.Figure)
+
+    def test_plot_ci_width_distribution(self, tmp_path, rng):
+        from conformal_predictions.evaluation.plots import plot_ci_width_distribution
+
+        widths = rng.exponential(0.3, size=200)
+        out = tmp_path / "ci_width.png"
+        fig = plot_ci_width_distribution(widths, output_path=out, model_name="GLM")
+        assert out.exists()
+        import matplotlib.pyplot as plt
+
+        assert isinstance(fig, plt.Figure)
+
+    def test_no_output_path_returns_figure(self, rng):
+        """When output_path is None, figure is returned and no file is written."""
+        from conformal_predictions.evaluation.plots import plot_roc_curve
+        import matplotlib.pyplot as plt
+
+        y_true = rng.integers(0, 2, size=50)
+        y_score = rng.uniform(0, 1, size=50)
+        fig = plot_roc_curve(y_true, y_score, "M")
+        assert isinstance(fig, plt.Figure)
+        plt.close("all")
+
+    def test_ax_parameter_respected(self, rng):
+        """Passing ax= should draw on that axes and return the correct Figure."""
+        import matplotlib.pyplot as plt
+
+        from conformal_predictions.evaluation.plots import plot_roc_curve
+
+        y_true = rng.integers(0, 2, size=50)
+        y_score = rng.uniform(0, 1, size=50)
+        fig_ext, ax_ext = plt.subplots()
+        fig_returned = plot_roc_curve(y_true, y_score, "M", ax=ax_ext)
+        assert fig_returned is fig_ext
+        plt.close("all")
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: run report generation
+# ---------------------------------------------------------------------------
+
+
+class TestRunReport:
+    """generate_run_report must write a valid Markdown file with key sections."""
+
+    def _make_ctx(self, tmp_path: Path):
+        """Build a minimal RunContext without needing a full config."""
+        from conformal_predictions.mlops.run_context import RunContext
+
+        ctx = RunContext(
+            run_id="abc12345",
+            timestamp="2026-03-10T12:00:00Z",
+            config_snapshot={},
+            config_path="configs/train_toy.yaml",
+            dataset="toy",
+            git_commit="deadbeef",
+            output_dir=tmp_path,
+        )
+        # Register a fake plot artifact
+        ctx.save_artifact(
+            "plots/GLM_roc_curve.png",
+            type="plot",
+            format="png",
+            description="ROC curve — GLM",
+        )
+        return ctx
+
+    def _make_metrics(self):
+        return {
+            "GLM": {
+                "performance": {
+                    "accuracy": 0.95,
+                    "precision": 0.93,
+                    "recall": 0.91,
+                    "f1": 0.92,
+                    "roc_auc": 0.97,
+                    "pr_auc": 0.96,
+                },
+                "calibration": {
+                    "coverage": 0.68,
+                    "width": 0.21,
+                    "ci_score": 3.14,
+                },
+            }
+        }
+
+    def test_report_file_created(self, tmp_path):
+        from conformal_predictions.evaluation.reports import generate_run_report
+
+        ctx = self._make_ctx(tmp_path)
+        out = tmp_path / "report.md"
+        result = generate_run_report(ctx, metrics=self._make_metrics(), output_path=out)
+        assert result == out
+        assert out.exists()
+
+    def test_report_contains_run_id(self, tmp_path):
+        from conformal_predictions.evaluation.reports import generate_run_report
+
+        ctx = self._make_ctx(tmp_path)
+        out = tmp_path / "report.md"
+        generate_run_report(ctx, metrics=self._make_metrics(), output_path=out)
+        content = out.read_text()
+        assert "abc12345" in content
+
+    def test_report_contains_metadata_fields(self, tmp_path):
+        from conformal_predictions.evaluation.reports import generate_run_report
+
+        ctx = self._make_ctx(tmp_path)
+        out = tmp_path / "report.md"
+        generate_run_report(ctx, metrics=self._make_metrics(), output_path=out)
+        content = out.read_text()
+        for field in ("Run Metadata", "Dataset", "Git Commit", "2026-03-10"):
+            assert field in content, f"Expected '{field}' in report"
+
+    def test_report_contains_metrics_table(self, tmp_path):
+        from conformal_predictions.evaluation.reports import generate_run_report
+
+        ctx = self._make_ctx(tmp_path)
+        out = tmp_path / "report.md"
+        generate_run_report(ctx, metrics=self._make_metrics(), output_path=out)
+        content = out.read_text()
+        assert "Classification Metrics" in content
+        assert "GLM" in content
+        assert "0.9500" in content  # accuracy
+
+    def test_report_contains_calibration_table(self, tmp_path):
+        from conformal_predictions.evaluation.reports import generate_run_report
+
+        ctx = self._make_ctx(tmp_path)
+        out = tmp_path / "report.md"
+        generate_run_report(ctx, metrics=self._make_metrics(), output_path=out)
+        content = out.read_text()
+        assert "Calibration Quality" in content
+        assert "Coverage" in content
+
+    def test_report_contains_plot_references(self, tmp_path):
+        from conformal_predictions.evaluation.reports import generate_run_report
+
+        ctx = self._make_ctx(tmp_path)
+        out = tmp_path / "report.md"
+        generate_run_report(ctx, metrics=self._make_metrics(), output_path=out)
+        content = out.read_text()
+        assert "GLM_roc_curve.png" in content
+
+    def test_partial_report_no_metrics(self, tmp_path):
+        """Report with no metrics still produces a valid file with metadata."""
+        from conformal_predictions.evaluation.reports import generate_run_report
+
+        ctx = self._make_ctx(tmp_path)
+        out = tmp_path / "report.md"
+        generate_run_report(ctx, metrics=None, output_path=out)
+        content = out.read_text()
+        assert "abc12345" in content
+        assert "Classification Metrics" not in content

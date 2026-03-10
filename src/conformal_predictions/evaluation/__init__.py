@@ -7,7 +7,16 @@ from conformal_predictions.evaluation.metrics import (  # noqa: F401
     compute_mean_width,
     compute_performance_metrics,
 )
-from conformal_predictions.evaluation.pseudoexperiments import (  # noqa: F401
-    evaluate_on_test_set,
-    inference_on_test_set,
+from conformal_predictions.evaluation.plots import (  # noqa: F401
+    plot_ci_coverage,
+    plot_ci_width_distribution,
+    plot_mu_hat_distribution,
+    plot_nonconformity_scores,
+    plot_pr_curve,
+    plot_roc_curve,
 )
+# NOTE: pseudoexperiments is intentionally NOT imported here to avoid a circular
+# import: calibration.strategies → data_viz → evaluation → pseudoexperiments →
+# calibration.strategies.  Import directly from the submodule when needed:
+#   from conformal_predictions.evaluation.pseudoexperiments import evaluate_on_test_set
+from conformal_predictions.evaluation.reports import generate_run_report  # noqa: F401

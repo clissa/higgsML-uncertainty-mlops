@@ -48,4 +48,9 @@ tracking:
   enabled: true
   wandb_enabled: false
   wandb_project: "higgsML-uncertainty"
+
+# --- Phase 4: Reporting ---
+reporting:
+  generate_plots: true   # set to false to skip plot generation
+  figure_dpi: 150        # PNG resolution (dots per inch)
   index_path: "results/runs_index.json"
