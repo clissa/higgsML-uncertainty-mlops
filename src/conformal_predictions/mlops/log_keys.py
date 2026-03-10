@@ -28,8 +28,27 @@ _ALLOWED_SECTIONS = frozenset({EDA, EVALUATION, CALIBRATION, ERROR_ANALYSIS, PLO
 
 
 # ---------------------------------------------------------------------------
-# Key builder
+# Key builders
 # ---------------------------------------------------------------------------
+
+
+def calib_key(name: str) -> str:
+    """Build a flat ``Calibration/<name>`` wandb metric key.
+
+    Use this for all Calibration-section metrics to keep the wandb
+    dashboard free of nested sub-sections.
+
+    Parameters
+    ----------
+    name : str
+        Metric or artifact name, e.g. ``"q_low"`` or ``"coverage"``.
+
+    Returns
+    -------
+    str
+        Key in the form ``"Calibration/<name>"``.
+    """
+    return f"Calibration/{name}"
 
 
 def wandb_key(section: str, subsection: str, name: str) -> str:

@@ -13,6 +13,7 @@ from conformal_predictions.mlops.log_keys import (
     ERROR_ANALYSIS,
     EVALUATION,
     PLOTS,
+    calib_key,
     wandb_key,
 )
 
@@ -56,3 +57,31 @@ class TestWandbKey:
         assert ERROR_ANALYSIS == "ErrorAnalysis"
         assert PLOTS == "Plots"
         assert len(_ALLOWED_SECTIONS) == 5
+
+
+class TestCalibKey:
+    """Validate the flat Calibration key helper."""
+
+    def test_basic_construction(self):
+        key = calib_key("q_low")
+        assert key == "Calibration/q_low"
+
+    def test_format_is_two_level(self):
+        """calib_key must produce exactly two path components."""
+        for name in ("score", "q_high", "ci_width", "coverage", "ci_score"):
+            key = calib_key(name)
+            parts = key.split("/")
+            assert len(parts) == 2, f"Expected 2 levels, got {key!r}"
+            assert parts[0] == "Calibration"
+            assert parts[1] == name
+
+    def test_no_subsection(self):
+        """calib_key must NOT include a subsection (3rd component)."""
+        key = calib_key("accuracy")
+        assert key.count("/") == 1
+
+    def test_test_ci_width_naming(self):
+        """Ensure the test-set CI width key is distinct from per-block ci_width."""
+        per_block = calib_key("ci_width")
+        test_set = calib_key("test_ci_width")
+        assert per_block != test_set

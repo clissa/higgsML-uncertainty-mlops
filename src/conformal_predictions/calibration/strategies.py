@@ -76,6 +76,11 @@ class CalibrationResult:
     calib_y_true: Optional[np.ndarray] = None
     calib_y_pred: Optional[Dict[str, np.ndarray]] = None
     calib_y_proba: Optional[Dict[str, np.ndarray]] = None
+    # Per-block (per-experiment) arrays, stored before concatenation.
+    # Lists have one entry per calibration experiment.
+    per_block_y_true: List[np.ndarray] = field(default_factory=list)
+    per_block_y_pred: Dict[str, List[np.ndarray]] = field(default_factory=dict)
+    per_block_y_proba: Dict[str, List[np.ndarray]] = field(default_factory=dict)
 
 
 def run_calibration(
@@ -182,6 +187,10 @@ def run_calibration(
     result.calib_y_true = np.concatenate(all_y_true)
     result.calib_y_pred = {n: np.concatenate(v) for n, v in calib_y_pred.items()}
     result.calib_y_proba = {n: np.concatenate(v) for n, v in calib_y_proba.items()}
+    # Store per-block data for per-experiment metric curves
+    result.per_block_y_true = all_y_true
+    result.per_block_y_pred = calib_y_pred
+    result.per_block_y_proba = calib_y_proba
 
     # 3. mu-hat calibration distribution
     mu_hat, mu_hat_stats = compute_mu_hat(

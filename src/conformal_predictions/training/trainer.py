@@ -69,11 +69,11 @@ from conformal_predictions.evaluation.plots import (
 from conformal_predictions.evaluation.pseudoexperiments import evaluate_on_test_set
 from conformal_predictions.evaluation.reports import generate_run_report
 from conformal_predictions.mlops.log_keys import (
-    CALIBRATION,
     EDA,
     ERROR_ANALYSIS,
     EVALUATION,
     PLOTS,
+    calib_key,
     wandb_key,
 )
 from conformal_predictions.mlops.run_context import RunContext
@@ -457,38 +457,31 @@ class Trainer:
             mu = float(np.mean(scores_arr)) if len(scores_arr) else float("nan")
             sd = float(np.std(scores_arr)) if len(scores_arr) else float("nan")
             print(f"  {name} score stats: mean={mu:.4f} ± std={sd:.4f}")
-            if self.tracker is not None:
-                self.tracker.log(
-                    wandb_key(CALIBRATION, "nonconformity", "score_mean"),
-                    mu,
-                    stage="calibrate",
-                )
-                self.tracker.log(
-                    wandb_key(CALIBRATION, "nonconformity", "score_std"),
-                    sd,
-                    stage="calibrate",
-                )
 
         if result.quantiles:
             for name, (ql, qh) in result.quantiles.items():
                 print(f"  {name} quantiles: q_low={ql:.4f}  q_high={qh:.4f}")
-                width = qh - ql
-                if self.tracker is not None:
-                    self.tracker.log(
-                        wandb_key(CALIBRATION, "nonconformity", "q_low"),
-                        ql,
-                        stage="calibrate",
-                    )
-                    self.tracker.log(
-                        wandb_key(CALIBRATION, "nonconformity", "q_high"),
-                        qh,
-                        stage="calibrate",
-                    )
-                    self.tracker.log(
-                        wandb_key(CALIBRATION, "nonconformity", "width"),
-                        width,
-                        stage="calibrate",
-                    )
+
+        # ------------------------------------------------------------------
+        # Per-block calibration curves (step = calibration block index)
+        # ------------------------------------------------------------------
+        if self.tracker is not None:
+            for name in self.models:
+                block_scores = result.per_block_scores.get(name, [])
+                q_lows = result.per_block_q_low.get(name, [])
+                q_highs = result.per_block_q_high.get(name, [])
+
+                for i, (score_arr, ql, qh) in enumerate(
+                    zip(block_scores, q_lows, q_highs)
+                ):
+                    block_metrics: dict = {
+                        calib_key("q_low"): float(ql),
+                        calib_key("q_high"): float(qh),
+                        calib_key("ci_width"): float(qh - ql),
+                    }
+                    if len(score_arr) > 0:
+                        block_metrics[calib_key("score")] = float(score_arr[0])
+                    self.tracker.log_dict(block_metrics, step=i + 1, stage="calibrate")
 
         return result
 
@@ -579,8 +572,12 @@ class Trainer:
                         )
                 for metric_name, value in cal.items():
                     if isinstance(value, (int, float)):
+                        # Rename "width" to avoid collision with per-block ci_width
+                        key_name = (
+                            "test_ci_width" if metric_name == "width" else metric_name
+                        )
                         self.tracker.log(
-                            wandb_key(CALIBRATION, "metrics", metric_name),
+                            calib_key(key_name),
                             float(value),
                             stage="evaluate",
                         )
@@ -723,11 +720,7 @@ class Trainer:
                     format="png",
                     description=f"CI width distribution — {model_name}",
                 )
-                if self.tracker is not None:
-                    self.tracker.log_image(
-                        wandb_key(CALIBRATION, "plots", "ci_width_distribution"),
-                        path,
-                    )
+                # (image logging removed from Calibration section)
 
             # Collect coverage for CI chart
             cal = eval_results.get(model_name, {}).get("calibration", {})
@@ -745,10 +738,7 @@ class Trainer:
                 format="png",
                 description="CI coverage",
             )
-            if self.tracker is not None:
-                self.tracker.log_image(
-                    wandb_key(CALIBRATION, "plots", "ci_coverage"), path
-                )
+            # (image logging removed from Calibration section)
 
         # Calibration-specific plots
         if calibration_result is not None:
@@ -826,11 +816,7 @@ class Trainer:
                     format="png",
                     description=f"Nonconformity scores — {model_name}",
                 )
-                if self.tracker is not None:
-                    self.tracker.log_image(
-                        wandb_key(PLOTS, "calibration", "nonconformity_distribution"),
-                        path,
-                    )
+                # (image logging removed from Calibration section)
 
                 # Nonconformity ECDF
                 path_ecdf = ctx.plots_dir / "nonconformity_ecdf.png"
@@ -846,11 +832,6 @@ class Trainer:
                     format="png",
                     description=f"Nonconformity ECDF — {model_name}",
                 )
-                if self.tracker is not None:
-                    self.tracker.log_image(
-                        wandb_key(PLOTS, "calibration", "nonconformity_ecdf"),
-                        path_ecdf,
-                    )
 
             # Nonconformity by class (if calib labels available)
             if (
@@ -877,15 +858,7 @@ class Trainer:
                     format="png",
                     description=f"Nonconformity by class — {model_name}",
                 )
-                if self.tracker is not None:
-                    self.tracker.log_image(
-                        wandb_key(
-                            PLOTS,
-                            "calibration",
-                            "nonconformity_distribution_by_class",
-                        ),
-                        path_bc,
-                    )
+                # (image logging removed from Calibration section)
 
             # Per-block q_low / q_high / width distributions
             q_lows = calibration_result.per_block_q_low.get(model_name, [])
@@ -907,11 +880,7 @@ class Trainer:
                     format="png",
                     description=f"q_low distribution — {model_name}",
                 )
-                if self.tracker is not None:
-                    self.tracker.log_image(
-                        wandb_key(PLOTS, "calibration", "q_low_distribution"),
-                        path_ql,
-                    )
+                # (image logging removed from Calibration section)
 
                 # q_high distribution
                 path_qh = ctx.plots_dir / "q_high_distribution.png"
@@ -929,11 +898,6 @@ class Trainer:
                     format="png",
                     description=f"q_high distribution — {model_name}",
                 )
-                if self.tracker is not None:
-                    self.tracker.log_image(
-                        wandb_key(PLOTS, "calibration", "q_high_distribution"),
-                        path_qh,
-                    )
 
                 # CI width distribution (per-block)
                 block_widths = [qh - ql for ql, qh in zip(q_lows, q_highs)]
@@ -952,39 +916,48 @@ class Trainer:
                     format="png",
                     description=f"Per-block CI width distribution — {model_name}",
                 )
-                if self.tracker is not None:
-                    self.tracker.log_image(
-                        wandb_key(CALIBRATION, "plots", "block_ci_width_distribution"),
-                        path_bw,
-                    )
 
     # ------------------------------------------------------------------
     # Calibration-set metrics (Phase 4.5)
     # ------------------------------------------------------------------
 
     def _log_calibration_metrics(self, calibration_result: CalibrationResult) -> None:
-        """Compute and log performance metrics on the calibration set."""
-        if (
-            calibration_result.calib_y_true is None
-            or calibration_result.calib_y_pred is None
-            or calibration_result.calib_y_proba is None
-        ):
+        """Compute and log per-block performance metrics on the calibration set.
+
+        Iterates over individual calibration experiments and logs metrics
+        (accuracy, f1, …) per block with ``step = block_index``, producing
+        curve-style plots in the wandb dashboard analogous to train/val
+        loss curves over epochs.
+        """
+        if not calibration_result.per_block_y_true:
             return
 
         for name in self.models:
-            if name not in calibration_result.calib_y_pred:
+            per_block_pred = calibration_result.per_block_y_pred.get(name, [])
+            per_block_proba = calibration_result.per_block_y_proba.get(name, [])
+            if not per_block_pred:
                 continue
-            y_true = calibration_result.calib_y_true
-            y_pred = calibration_result.calib_y_pred[name]
-            y_proba = calibration_result.calib_y_proba[name]
-            perf = compute_performance_metrics(y_true, y_pred, y_proba)
-            if self.tracker is not None:
-                for metric_name, value in perf.items():
-                    if isinstance(value, (int, float)):
-                        self.tracker.log(
-                            wandb_key(CALIBRATION, "metrics", metric_name),
-                            float(value),
-                            stage="calibrate",
+
+            for i, (y_t, y_p, y_pr) in enumerate(
+                zip(
+                    calibration_result.per_block_y_true,
+                    per_block_pred,
+                    per_block_proba,
+                )
+            ):
+                # Skip blocks with only one class (metrics like AUC are undefined)
+                if len(np.unique(y_t)) < 2:
+                    continue
+                perf = compute_performance_metrics(y_t, y_p, y_pr)
+                if self.tracker is not None:
+                    block_metrics = {
+                        calib_key(metric_name): float(value)
+                        for metric_name, value in perf.items()
+                        if isinstance(value, (int, float))
+                    }
+                    if block_metrics:
+                        self.tracker.log_dict(
+                            block_metrics, step=i + 1, stage="calibrate"
                         )
 
     # ------------------------------------------------------------------
