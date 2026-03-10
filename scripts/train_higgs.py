@@ -233,6 +233,7 @@ def load_test(
 # TODO: Add more models and hyperparameter tuning: in particular, try probability regression VS classification.
 def _build_models(seed: int, n_jobs: int) -> Dict[str, object]:
     import warnings
+
     warnings.warn(
         "train_higgs.py is deprecated. Use run_train.py --config ... instead.",
         DeprecationWarning,

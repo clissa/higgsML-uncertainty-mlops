@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -19,8 +20,6 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
 from tqdm.auto import tqdm
-
-import warnings
 
 from conformal_predictions.data.toy import load_pseudo_experiment
 from conformal_predictions.data_viz import (

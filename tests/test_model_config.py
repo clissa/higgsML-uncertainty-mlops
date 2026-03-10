@@ -23,7 +23,6 @@ from conformal_predictions.config import (
 )
 from conformal_predictions.training.models import build_model
 
-
 # ---------------------------------------------------------------------------
 # ModelConfig dataclass
 # ---------------------------------------------------------------------------
@@ -125,10 +124,7 @@ class TestModelConfigFromYAML:
     def test_load_model_string_shorthand(self, tmp_path: Path):
         yaml_path = tmp_path / "cfg.yaml"
         yaml_path.write_text(
-            "dataset: toy\n"
-            "data_dir: data/fake\n"
-            "seed: 42\n"
-            "model: glm\n"
+            "dataset: toy\n" "data_dir: data/fake\n" "seed: 42\n" "model: glm\n"
         )
         cfg = load_training_config(yaml_path)
         assert cfg.model.name == "glm"
