@@ -73,6 +73,7 @@ from conformal_predictions.mlops.log_keys import (
     EDA,
     ERROR_ANALYSIS,
     EVALUATION,
+    PLOTS,
     wandb_key,
 )
 from conformal_predictions.mlops.run_context import RunContext
@@ -200,11 +201,95 @@ class Trainer:
     # Fit
     # ------------------------------------------------------------------
 
-    def fit(self, X_train: np.ndarray, y_train: np.ndarray) -> None:
-        """Build and train the configured model."""
+    def fit(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        X_val: Optional[np.ndarray] = None,
+        y_val: Optional[np.ndarray] = None,
+    ) -> None:
+        """Build and train the configured model.
+
+        When a tracker is attached, per-epoch metrics (loss, accuracy,
+        precision, recall, f1) are logged for both train and val splits
+        using the ``val_`` prefix convention (``Evaluation/loss`` /
+        ``Evaluation/val_loss``) so that wandb places them on the same
+        chart with different colours.  Curve-based metrics (roc_auc,
+        pr_auc) are logged once at the end of training.
+
+        Parameters
+        ----------
+        X_train, y_train : arrays
+            Scaled training features and labels.
+        X_val, y_val : arrays, optional
+            Scaled validation features and labels used for per-epoch
+            metric logging.  Not required for training itself.
+        """
+        # Metrics computed every epoch (cheap; no curve integrals)
+        _EPOCH_METRICS = ["loss", "accuracy", "precision", "recall", "f1"]
+        # Metrics computed once at end of training (AUC requires full curves)
+        _FINAL_METRICS = ["roc_auc", "pr_auc"]
+
         self.models = build_model(self.config.model, self.config.seed)
-        for model in tqdm(self.models.values(), desc="Training models"):
-            model.fit(X_train, y_train)
+        threshold = self.config.threshold
+        for name, model in self.models.items():
+            n_epochs: int = getattr(model, "max_iter", 1)
+            classes = np.unique(y_train)
+            for epoch in tqdm(range(n_epochs), desc=f"Training {name}"):
+                model.partial_fit(X_train, y_train, classes=classes)
+
+                if self.tracker is None:
+                    continue
+
+                step = epoch + 1
+                log_dict: dict = {}
+
+                # --- per-epoch train metrics (val_ prefix convention) ---
+                y_proba_tr = model.predict_proba(X_train)[:, 1]
+                y_pred_tr = (y_proba_tr > threshold).astype(int)
+                train_perf = compute_performance_metrics(
+                    y_train, y_pred_tr, y_proba_tr, metric_names=_EPOCH_METRICS
+                )
+                for metric_name, value in train_perf.items():
+                    if isinstance(value, (int, float)):
+                        log_dict[f"{EVALUATION}/{metric_name}"] = float(value)
+
+                # --- per-epoch val metrics ---
+                if X_val is not None and y_val is not None:
+                    y_proba_val = model.predict_proba(X_val)[:, 1]
+                    y_pred_val = (y_proba_val > threshold).astype(int)
+                    val_perf = compute_performance_metrics(
+                        y_val, y_pred_val, y_proba_val, metric_names=_EPOCH_METRICS
+                    )
+                    for metric_name, value in val_perf.items():
+                        if isinstance(value, (int, float)):
+                            log_dict[f"{EVALUATION}/val_{metric_name}"] = float(value)
+
+                # Batch all epoch metrics into one wandb.log() call so they
+                # share the same step and wandb groups them correctly
+                self.tracker.log_dict(log_dict, step=step, stage="train")
+
+            # --- end-of-training AUC metrics (logged once) ---
+            if self.tracker is not None:
+                auc_dict: dict = {}
+                y_proba_tr = model.predict_proba(X_train)[:, 1]
+                y_pred_tr = (y_proba_tr > threshold).astype(int)
+                train_auc = compute_performance_metrics(
+                    y_train, y_pred_tr, y_proba_tr, metric_names=_FINAL_METRICS
+                )
+                for metric_name, value in train_auc.items():
+                    if isinstance(value, (int, float)):
+                        auc_dict[f"{EVALUATION}/{metric_name}"] = float(value)
+                if X_val is not None and y_val is not None:
+                    y_proba_val = model.predict_proba(X_val)[:, 1]
+                    y_pred_val = (y_proba_val > threshold).astype(int)
+                    val_auc = compute_performance_metrics(
+                        y_val, y_pred_val, y_proba_val, metric_names=_FINAL_METRICS
+                    )
+                    for metric_name, value in val_auc.items():
+                        if isinstance(value, (int, float)):
+                            auc_dict[f"{EVALUATION}/val_{metric_name}"] = float(value)
+                self.tracker.log_dict(auc_dict, step=n_epochs, stage="train")
 
     # ------------------------------------------------------------------
     # Stage 1: train
@@ -269,12 +354,10 @@ class Trainer:
                 description="Contour plot of data features",
             )
             if self.tracker is not None:
-                self.tracker.log_image(
-                    wandb_key(EDA, "plots", "contour_plot"), contour_path
-                )
+                self.tracker.log_image(f"{EDA}/data_contour", contour_path)
 
-        # ---- fit ----
-        self.fit(X_train_scaled, y_train)
+        # ---- fit (per-epoch, with train+val metric logging) ----
+        self.fit(X_train_scaled, y_train, X_val_scaled, y_val)
 
         # ---- compute and store train predictions ----
         for name, model in self.models.items():
@@ -285,40 +368,18 @@ class Trainer:
         # ---- EDA logging ----
         self._log_eda(X_train, y_train, X_train_scaled)
 
-        # ---- quick validation metrics ----
+        # ---- print final validation summary ----
         perf = evaluate_models(self.models, X_val_scaled, y_val)
         for name, m in perf.items():
-            print(f"\n\n{name} validation metrics:")
+            print(f"\n\n{name} final validation metrics:")
             print(
                 f"\tAccuracy: {m['accuracy']:.4f}"
                 f"\tPrecision: {m['precision']:.4f}"
                 f"\tRecall: {m['recall']:.4f}"
                 f"\tF1: {m['f1']:.4f}"
             )
-            if self.tracker is not None:
-                for metric_name, value in m.items():
-                    if isinstance(value, (int, float)):
-                        self.tracker.log(
-                            wandb_key(EVALUATION, "val", metric_name),
-                            float(value),
-                            stage="train",
-                        )
-
-        # ---- log train-set performance metrics ----
-        for name in self.models:
-            y_proba_train = self._train_predictions[name]
-            y_pred_train = self._train_pred_labels[name]
-            train_perf = compute_performance_metrics(
-                y_train, y_pred_train, y_proba_train
-            )
-            if self.tracker is not None:
-                for metric_name, value in train_perf.items():
-                    if isinstance(value, (int, float)):
-                        self.tracker.log(
-                            wandb_key(EVALUATION, "train", metric_name),
-                            float(value),
-                            stage="train",
-                        )
+        # Per-epoch train/val metrics with full metric set (including roc_auc,
+        # pr_auc, loss) are logged inside fit() above.
 
         counts = get_events_count(self.models, X_val_scaled, cfg.threshold)
         for name, count in counts.items():
@@ -428,14 +489,6 @@ class Trainer:
                         width,
                         stage="calibrate",
                     )
-
-        # Log calibration config
-        if self.tracker is not None:
-            self.tracker.log(
-                wandb_key(CALIBRATION, "config", "alpha"),
-                calib_config.alpha,
-                stage="calibrate",
-            )
 
         return result
 
@@ -582,7 +635,7 @@ class Trainer:
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(EVALUATION, "plots", "roc_curve"), path
+                        wandb_key(PLOTS, "predictions", "roc_curve"), path
                     )
 
             # Joint train+val PR curve
@@ -605,7 +658,7 @@ class Trainer:
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(EVALUATION, "plots", "pr_curve"), path
+                        wandb_key(PLOTS, "predictions", "pr_curve"), path
                     )
 
             # Predictions ECDF (train vs val)
@@ -626,7 +679,7 @@ class Trainer:
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(EVALUATION, "plots", "predictions_ecdf"),
+                        wandb_key(PLOTS, "predictions", "predictions_ecdf"),
                         path,
                     )
 
@@ -648,7 +701,7 @@ class Trainer:
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(CALIBRATION, "plots", "mu_hat_distribution_test"),
+                        wandb_key(PLOTS, "calibration", "mu_hat_distribution_test"),
                         path,
                     )
 
@@ -731,15 +784,6 @@ class Trainer:
         ctx = self.run_ctx
         dpi = getattr(getattr(self.config, "reporting", None), "figure_dpi", 150)
 
-        # Class balance scalar
-        class_balance = float(np.mean(y_train))
-        if self.tracker is not None:
-            self.tracker.log(
-                wandb_key(EDA, "train", "class_balance"),
-                class_balance,
-                stage="train",
-            )
-
         # Target distribution plot
         path = ctx.plots_dir / "target_distribution.png"
         plot_target_distribution(y_train, output_path=path, dpi=dpi)
@@ -750,7 +794,7 @@ class Trainer:
             description="Target class distribution (train)",
         )
         if self.tracker is not None:
-            self.tracker.log_image(wandb_key(EDA, "plots", "target_distribution"), path)
+            self.tracker.log_image(f"{EDA}/target_distribution", path)
 
     # ------------------------------------------------------------------
     # Calibration plots (Phase 4.5)
@@ -784,7 +828,7 @@ class Trainer:
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(CALIBRATION, "plots", "nonconformity_distribution"),
+                        wandb_key(PLOTS, "calibration", "nonconformity_distribution"),
                         path,
                     )
 
@@ -804,7 +848,7 @@ class Trainer:
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(CALIBRATION, "plots", "nonconformity_ecdf"),
+                        wandb_key(PLOTS, "calibration", "nonconformity_ecdf"),
                         path_ecdf,
                     )
 
@@ -836,8 +880,8 @@ class Trainer:
                 if self.tracker is not None:
                     self.tracker.log_image(
                         wandb_key(
-                            CALIBRATION,
-                            "plots",
+                            PLOTS,
+                            "calibration",
                             "nonconformity_distribution_by_class",
                         ),
                         path_bc,
@@ -865,7 +909,7 @@ class Trainer:
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(CALIBRATION, "plots", "q_low_distribution"),
+                        wandb_key(PLOTS, "calibration", "q_low_distribution"),
                         path_ql,
                     )
 
@@ -887,7 +931,7 @@ class Trainer:
                 )
                 if self.tracker is not None:
                     self.tracker.log_image(
-                        wandb_key(CALIBRATION, "plots", "q_high_distribution"),
+                        wandb_key(PLOTS, "calibration", "q_high_distribution"),
                         path_qh,
                     )
 

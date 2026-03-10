@@ -19,7 +19,7 @@ mu: 1.0                            # Signal strength parameter (Higgs production
 
 # Reproducibility
 # ───────────────
-seed: 20260310                           # Fixed random seed for deterministic results
+seed: null                           # Fixed random seed for deterministic results
 
 # Data Splitting Strategy
 # ────────────────────────
@@ -38,7 +38,7 @@ model:
   params:
     hidden_layer_sizes: [32, 16]
     activation: relu
-    max_iter: 1000
+    max_iter: 20
 
 # Model Inference Parameters
 # ───────────────────────────

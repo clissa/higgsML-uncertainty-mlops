@@ -1,8 +1,8 @@
 """Naming helper for structured wandb logging keys.
 
-Enforces the ``Section/subsection/name`` taxonomy with exactly four
-allowed top-level sections.  This module is the single source of truth
-for all wandb key construction.
+Enforces the ``Section/subsection/name`` taxonomy with five allowed
+top-level sections.  This module is the single source of truth for all
+wandb key construction.
 
 Usage::
 
@@ -22,8 +22,9 @@ EDA: str = "EDA"
 EVALUATION: str = "Evaluation"
 CALIBRATION: str = "Calibration"
 ERROR_ANALYSIS: str = "ErrorAnalysis"
+PLOTS: str = "Plots"
 
-_ALLOWED_SECTIONS = frozenset({EDA, EVALUATION, CALIBRATION, ERROR_ANALYSIS})
+_ALLOWED_SECTIONS = frozenset({EDA, EVALUATION, CALIBRATION, ERROR_ANALYSIS, PLOTS})
 
 
 # ---------------------------------------------------------------------------
@@ -37,7 +38,8 @@ def wandb_key(section: str, subsection: str, name: str) -> str:
     Parameters
     ----------
     section : str
-        One of ``EDA``, ``Evaluation``, ``Calibration``, ``ErrorAnalysis``.
+        One of ``EDA``, ``Evaluation``, ``Calibration``, ``ErrorAnalysis``,
+        ``Plots``.
     subsection : str
         Logical grouping within the section (e.g. ``"plots"``, ``"train"``).
     name : str

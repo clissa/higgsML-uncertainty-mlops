@@ -12,6 +12,7 @@ from conformal_predictions.mlops.log_keys import (
     EDA,
     ERROR_ANALYSIS,
     EVALUATION,
+    PLOTS,
     wandb_key,
 )
 
@@ -38,7 +39,7 @@ class TestWandbKey:
     def test_format_matches_taxonomy(self):
         """All keys must match Section/subsection/name pattern."""
         pattern = re.compile(
-            r"^(EDA|Evaluation|Calibration|ErrorAnalysis)/[^/]+/[^/]+$"
+            r"^(EDA|Evaluation|Calibration|ErrorAnalysis|Plots)/[^/]+/[^/]+$"
         )
         for section in _ALLOWED_SECTIONS:
             k = wandb_key(section, "test_sub", "test_name")
@@ -48,9 +49,10 @@ class TestWandbKey:
         with pytest.raises(AssertionError, match="Invalid section"):
             wandb_key("BadSection", "sub", "name")
 
-    def test_all_four_sections_defined(self):
+    def test_all_five_sections_defined(self):
         assert EDA == "EDA"
         assert EVALUATION == "Evaluation"
         assert CALIBRATION == "Calibration"
         assert ERROR_ANALYSIS == "ErrorAnalysis"
-        assert len(_ALLOWED_SECTIONS) == 4
+        assert PLOTS == "Plots"
+        assert len(_ALLOWED_SECTIONS) == 5

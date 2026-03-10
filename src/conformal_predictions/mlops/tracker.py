@@ -130,6 +130,50 @@ class Tracker:
             except Exception:
                 pass
 
+    def log_dict(
+        self,
+        metrics: dict,
+        step: Optional[int] = None,
+        stage: Optional[str] = None,
+    ) -> None:
+        """Log a batch of scalar metrics in a single wandb call.
+
+        All entries are recorded individually in ``self._metrics`` for
+        ``metrics.json``, but forwarded to wandb as one
+        ``wandb_run.log(dict, step=step)`` call so that metrics logged at
+        the same step are grouped correctly in the wandb UI.
+
+        Parameters
+        ----------
+        metrics : dict
+            Mapping of metric name → scalar value.
+        step : int, optional
+            Training step / epoch number.
+        stage : str, optional
+            Pipeline stage label, e.g. ``"train"``.
+        """
+        ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        wandb_payload: dict = {}
+        for name, value in metrics.items():
+            record = {
+                "name": name,
+                "value": float(value),
+                "step": step,
+                "stage": stage,
+                "timestamp": ts,
+            }
+            self._metrics.append(record)
+            wandb_payload[name] = float(value)
+
+        if self._wandb_run is not None and wandb_payload:
+            try:
+                kwargs: dict = {}
+                if step is not None:
+                    kwargs["step"] = step
+                self._wandb_run.log(wandb_payload, **kwargs)
+            except Exception:
+                pass
+
     def log_image(self, key: str, path: "Path") -> None:
         """Log a PNG image to wandb under *key*; fails silently.
 

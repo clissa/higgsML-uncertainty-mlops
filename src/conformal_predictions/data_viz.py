@@ -433,7 +433,7 @@ def contourplot_data(
     ax.legend(frameon=False)
     ax.grid(alpha=0.25)
     plt.tight_layout()
-    plt.savefig(output_dir / "data_contour.png", dpi=300, bbox_inches="tight")
+    plt.savefig(output_dir / "data_contour_classes.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
