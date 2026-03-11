@@ -108,10 +108,15 @@ def main(argv: list[str] | None = None) -> None:
 
     # ---- start tracker ----
     tracker = Tracker(ctx, cfg.tracking)
-    tracker.start(cfg.to_dict())
 
     # ---- build trainer ----
     trainer = Trainer(cfg, ctx, tracker=tracker)
+
+    # ---- data lineage (helper W&B runs — must precede tracker.start) ----
+    trainer.prepare_data_lineage()
+
+    # ---- start main W&B run ----
+    tracker.start(cfg.to_dict())
 
     mode = args.mode
 

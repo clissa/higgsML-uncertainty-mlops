@@ -38,7 +38,7 @@ model:
   params:
     hidden_layer_sizes: [128, 16, 32]
     activation: relu
-    max_iter: 100
+    max_iter: 10
 
 # Model Inference Parameters
 # ───────────────────────────

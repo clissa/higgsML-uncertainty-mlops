@@ -21,6 +21,8 @@ from conformal_predictions.mlops.artifacts import (
     artifact_name,
     log_model_artifact,
     log_or_use_data_artifact,
+    log_raw_data_run,
+    log_split_data_run,
 )
 
 # ---------------------------------------------------------------------------
@@ -393,3 +395,175 @@ class TestTrackerArtifactMethods:
         # _wandb_run is None because wandb_enabled=False
         result = tracker.use_data_artifact("toy-1.0-calib")
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# H) log_raw_data_run — short-lived dataset-logging helper run
+# ---------------------------------------------------------------------------
+
+
+class TestLogRawDataRun:
+    @patch("conformal_predictions.mlops.artifacts._WANDB_AVAILABLE", True)
+    @patch("conformal_predictions.mlops.artifacts._wandb")
+    def test_creates_run_and_logs_artifact(self, mock_wandb, tmp_path):
+        fake_run = MagicMock()
+        mock_wandb.init.return_value = fake_run
+        fake_art = MagicMock()
+        fake_art.metadata = {}
+        mock_wandb.Artifact.return_value = fake_art
+
+        f1 = tmp_path / "data.npz"
+        f1.touch()
+
+        result = log_raw_data_run("my-project", None, "toy-1.0-raw", [f1])
+
+        mock_wandb.init.assert_called_once_with(
+            project="my-project",
+            entity=None,
+            name="dataset-logging",
+            job_type="dataset-logging",
+            reinit=True,
+        )
+        mock_wandb.Artifact.assert_called_once_with("toy-1.0-raw", type="dataset")
+        fake_art.add_reference.assert_called_once_with(f"file://{f1.resolve()}")
+        fake_run.log_artifact.assert_called_once_with(fake_art)
+        fake_art.wait.assert_called_once()
+        fake_run.finish.assert_called_once()
+        assert result is fake_art
+
+    @patch("conformal_predictions.mlops.artifacts._WANDB_AVAILABLE", True)
+    @patch("conformal_predictions.mlops.artifacts._wandb")
+    def test_metadata_included(self, mock_wandb, tmp_path):
+        fake_run = MagicMock()
+        mock_wandb.init.return_value = fake_run
+        fake_art = MagicMock()
+        fake_art.metadata = {}
+        mock_wandb.Artifact.return_value = fake_art
+
+        f1 = tmp_path / "data.npz"
+        f1.touch()
+        meta = {"seed": 42}
+
+        log_raw_data_run("proj", None, "toy-1.0-raw", [f1], metadata=meta)
+
+        assert fake_art.metadata == {"seed": 42}
+
+    @patch("conformal_predictions.mlops.artifacts._WANDB_AVAILABLE", False)
+    def test_noop_when_wandb_unavailable(self):
+        result = log_raw_data_run("proj", None, "toy-1.0-raw", [])
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# I) log_split_data_run — short-lived dataset-splitting helper run
+# ---------------------------------------------------------------------------
+
+
+class TestLogSplitDataRun:
+    @patch("conformal_predictions.mlops.artifacts._WANDB_AVAILABLE", True)
+    @patch("conformal_predictions.mlops.artifacts._wandb")
+    def test_creates_run_uses_raw_and_logs_splits(self, mock_wandb, tmp_path):
+        fake_run = MagicMock()
+        mock_wandb.init.return_value = fake_run
+
+        arts = {}
+
+        def make_art(name, type):
+            art = MagicMock()
+            art.metadata = {}
+            arts[name] = art
+            return art
+
+        mock_wandb.Artifact.side_effect = make_art
+
+        f1 = tmp_path / "train.npz"
+        f1.touch()
+        f2 = tmp_path / "val.npz"
+        f2.touch()
+
+        splits = {"toy-1.0-train": [f1], "toy-1.0-val": [f2]}
+        result = log_split_data_run("proj", None, "toy-1.0-raw", splits)
+
+        mock_wandb.init.assert_called_once_with(
+            project="proj",
+            entity=None,
+            name="dataset-splitting",
+            job_type="dataset-splitting",
+            reinit=True,
+        )
+        # Declares raw as input
+        fake_run.use_artifact.assert_called_once_with("toy-1.0-raw:latest")
+        # Logs each split
+        assert fake_run.log_artifact.call_count == 2
+        fake_run.finish.assert_called_once()
+        assert set(result.keys()) == {"toy-1.0-train", "toy-1.0-val"}
+
+    @patch("conformal_predictions.mlops.artifacts._WANDB_AVAILABLE", True)
+    @patch("conformal_predictions.mlops.artifacts._wandb")
+    def test_metadata_on_splits(self, mock_wandb, tmp_path):
+        fake_run = MagicMock()
+        mock_wandb.init.return_value = fake_run
+        fake_art = MagicMock()
+        fake_art.metadata = {}
+        mock_wandb.Artifact.return_value = fake_art
+
+        f1 = tmp_path / "train.npz"
+        f1.touch()
+        meta = {"seed": 7}
+
+        log_split_data_run("proj", None, "raw", {"split": [f1]}, metadata=meta)
+
+        assert fake_art.metadata == {"seed": 7}
+
+    @patch("conformal_predictions.mlops.artifacts._WANDB_AVAILABLE", False)
+    def test_noop_when_wandb_unavailable(self):
+        result = log_split_data_run("proj", None, "raw", {"split": []})
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# J) Tracker.prepare_data_lineage
+# ---------------------------------------------------------------------------
+
+
+class TestTrackerPrepareDataLineage:
+    def _make_tracker(self, wandb_enabled=False, artifact_version="latest"):
+        from conformal_predictions.mlops.tracker import Tracker
+
+        ctx = MagicMock()
+        ctx.output_dir = Path("/tmp/fake-run")
+        cfg = TrackingConfig(
+            enabled=True,
+            wandb_enabled=wandb_enabled,
+            artifact_version=artifact_version,
+        )
+        return Tracker(ctx, cfg)
+
+    def test_noop_when_wandb_disabled(self, tmp_path):
+        tracker = self._make_tracker(wandb_enabled=False)
+        with patch("conformal_predictions.mlops.artifacts.log_raw_data_run") as m:
+            tracker.prepare_data_lineage("raw", [], {}, None)
+            m.assert_not_called()
+
+    def test_noop_when_pinned_version(self, tmp_path):
+        tracker = self._make_tracker(wandb_enabled=True, artifact_version="v2")
+        with patch("conformal_predictions.mlops.artifacts.log_raw_data_run") as m:
+            tracker.prepare_data_lineage("raw", [], {}, None)
+            m.assert_not_called()
+
+    @patch("conformal_predictions.mlops.artifacts._WANDB_AVAILABLE", True)
+    def test_delegates_to_helper_runs(self, tmp_path):
+        tracker = self._make_tracker(wandb_enabled=True, artifact_version="latest")
+        f1 = tmp_path / "data.npz"
+        f1.touch()
+
+        with (
+            patch("conformal_predictions.mlops.artifacts.log_raw_data_run") as mock_raw,
+            patch(
+                "conformal_predictions.mlops.artifacts.log_split_data_run"
+            ) as mock_split,
+        ):
+            splits = {"toy-1.0-train": [f1]}
+            tracker.prepare_data_lineage("toy-1.0-raw", [f1], splits, {"seed": 1})
+            mock_raw.assert_called_once()
+            mock_split.assert_called_once()

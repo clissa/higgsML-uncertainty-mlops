@@ -97,3 +97,30 @@ Phase 4.7 is commit-ready. All acceptance criteria met.
 
 Option A chosen: single-family-per-run with light multi-family support.
 MLP is the default; GLM and Random Forest remain available via config/CLI.
+
+---
+
+# Fix W&B Artifact Lineage (Data + Model)
+
+## Problem
+
+All artifacts (raw, splits, model) were logged as outputs of a single W&B run,
+so W&B could not build a proper multi-step lineage graph.
+
+## Changes
+
+- [x] 1. `artifacts.py` — Add `log_raw_data_run()` (short-lived "dataset-logging" W&B run)
+- [x] 2. `artifacts.py` — Add `log_split_data_run()` (short-lived "dataset-splitting" W&B run)
+- [x] 3. `tracker.py` — Add `prepare_data_lineage()` (orchestrates helper runs before `start()`)
+- [x] 4. `tracker.py` — Add `job_type="callbacks-training"` to main `wandb.init()` in `start()`
+- [x] 5. `trainer.py` — Add `prepare_data_lineage()` (computes splits, calls tracker)
+- [x] 6. `trainer.py` — Remove all `tracker.log_data_artifact()` calls from `load_data()`
+- [x] 7. `run_train.py` — Reorder: `prepare_data_lineage()` → `tracker.start()` → `trainer.run()`
+- [x] 8. `test_artifacts.py` — 10 new tests for `log_raw_data_run`, `log_split_data_run`, `prepare_data_lineage`
+- [x] 9. `test_scripts_smoke.py` — Add `prepare_data_lineage()` to mock Trainer
+
+## Verification
+
+- [x] All 174 tests pass (`pytest tests/ -v`)
+- [x] End-to-end pipeline creates 3 W&B runs: dataset-logging → dataset-splitting → training
+- [x] W&B lineage: `raw → {train, val, calib, test} → model`

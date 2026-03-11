@@ -43,3 +43,11 @@
 - **Root cause**: When `evaluate()` was wired up, the `ref_efficiencies_dict` kwarg was omitted from the call despite `self._ref_efficiencies` being available.
 - **Rule**: When a downstream function has an Optional parameter with a fallback default (e.g., `ref_efficiencies_dict=None` → `{name: (1.0, 1.0)}`), always pass the real value explicitly. Silent defaults on physics quantities are dangerous.
 - **Detection**: The calibration mu_hat was correct (~1.0) while test mu_hat was biased (~-0.94). Comparing calibration vs test mu_hat distributions immediately reveals the inconsistency.
+
+## Fix W&B Artifact Lineage
+
+### Pattern: W&B lineage requires separate runs for multi-step graphs
+- **Bug**: All artifacts (raw data, splits, model) were logged as outputs of a single W&B run, producing a flat lineage graph instead of `raw → splits → model`.
+- **Root cause**: `log_artifact()` and `use_artifact()` on the same artifact within the same run doesn't create the expected input→output edges. W&B needs distinct runs for each pipeline stage.
+- **Rule**: For multi-step lineage in W&B, create dedicated short-lived runs with appropriate `job_type` labels (e.g., "dataset-logging", "dataset-splitting"). Each run should produce outputs and declare inputs via `use_artifact`, so W&B can draw edges between stages.
+- **Pattern**: Helper runs must be finished (`run.finish()`) before the main training run starts (`wandb.init`). Use `art.wait()` on upstream artifacts to ensure server-side availability.

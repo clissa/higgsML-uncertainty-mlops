@@ -347,6 +347,9 @@ def test_run_train_command_smoke(tmp_path, monkeypatch):
             self.config = config
             self.run_ctx = run_ctx
 
+        def prepare_data_lineage(self):
+            pass
+
         def run(self):
             self.run_ctx.ensure_dirs()
             self.run_ctx.save_metadata()

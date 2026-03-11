@@ -139,6 +139,62 @@ class Trainer:
         self._raw_eval_data: Dict[str, dict] = {}
 
     # ------------------------------------------------------------------
+    # Data lineage (must run before tracker.start)
+    # ------------------------------------------------------------------
+
+    def prepare_data_lineage(self) -> None:
+        """Log raw + split data artifacts via dedicated W&B helper runs.
+
+        Computes the file-level train/val/calib/test split (same logic
+        as :meth:`load_data`) and stores the result so ``load_data``
+        can reuse it.  Then creates two short-lived W&B runs
+        ("dataset-logging" and "dataset-splitting") that produce the
+        correct lineage graph:  ``raw → {train, val, calib, test}``.
+
+        Must be called **before** ``tracker.start()``.
+        """
+        cfg = self.config
+        train_files, val_files, calib_files, test_files = list_split_files(
+            Path(cfg.data_dir),
+            cfg.mu,
+            cfg.test_prefixes,
+            cfg.n_test_experiments,
+            cfg.valid_size,
+            cfg.calib_size,
+            cfg.seed,
+        )
+
+        # Cache for reuse in load_data()
+        self._split_files = (train_files, val_files, calib_files, test_files)
+
+        if self.tracker is None:
+            return
+
+        mu_dir = Path(cfg.data_dir) / f"mu={cfg.mu}"
+        all_npz = sorted(mu_dir.glob("*.npz"))
+        split_params = {
+            "seed": cfg.seed,
+            "valid_size": cfg.valid_size,
+            "calib_size": cfg.calib_size,
+            "test_prefixes": cfg.test_prefixes,
+        }
+        raw_name = artifact_name(cfg.dataset, cfg.mu, "raw")
+
+        splits = {
+            artifact_name(cfg.dataset, cfg.mu, "train"): train_files,
+            artifact_name(cfg.dataset, cfg.mu, "val"): val_files,
+            artifact_name(cfg.dataset, cfg.mu, "calib"): calib_files,
+            artifact_name(cfg.dataset, cfg.mu, "test"): test_files,
+        }
+
+        self.tracker.prepare_data_lineage(
+            raw_name=raw_name,
+            raw_files=all_npz,
+            splits=splits,
+            split_params=split_params,
+        )
+
+    # ------------------------------------------------------------------
     # Data loading
     # ------------------------------------------------------------------
 
@@ -160,15 +216,20 @@ class Trainer:
         X_train, y_train, X_val, y_val, calib_data, calib_meta, test_files
         """
         cfg = self.config
-        train_files, val_files, calib_files, test_files = list_split_files(
-            Path(cfg.data_dir),
-            cfg.mu,
-            cfg.test_prefixes,
-            cfg.n_test_experiments,
-            cfg.valid_size,
-            cfg.calib_size,
-            cfg.seed,
-        )
+
+        # Reuse pre-computed split if prepare_data_lineage() was called
+        if hasattr(self, "_split_files") and self._split_files is not None:
+            train_files, val_files, calib_files, test_files = self._split_files
+        else:
+            train_files, val_files, calib_files, test_files = list_split_files(
+                Path(cfg.data_dir),
+                cfg.mu,
+                cfg.test_prefixes,
+                cfg.n_test_experiments,
+                cfg.valid_size,
+                cfg.calib_size,
+                cfg.seed,
+            )
 
         train_blocks: List[np.ndarray] = []
         train_labels: List[np.ndarray] = []
@@ -196,44 +257,6 @@ class Trainer:
         y_train = np.concatenate(train_labels)
         X_val = np.vstack(val_blocks)
         y_val = np.concatenate(val_labels)
-
-        # -- Log data artifacts (Phase 4.9-A Step 4) --
-        if self.tracker is not None:
-            mu_dir = Path(cfg.data_dir) / f"mu={cfg.mu}"
-            all_npz = sorted(mu_dir.glob("*.npz"))
-            split_params = {
-                "seed": cfg.seed,
-                "valid_size": cfg.valid_size,
-                "calib_size": cfg.calib_size,
-                "test_prefixes": cfg.test_prefixes,
-            }
-            # Raw dataset artifact (all .npz files)
-            self.tracker.log_data_artifact(
-                artifact_name(cfg.dataset, cfg.mu, "raw"),
-                files=all_npz,
-                split_params=split_params,
-            )
-            # Per-split artifacts
-            self.tracker.log_data_artifact(
-                artifact_name(cfg.dataset, cfg.mu, "train"),
-                files=train_files,
-                split_params=split_params,
-            )
-            self.tracker.log_data_artifact(
-                artifact_name(cfg.dataset, cfg.mu, "val"),
-                files=val_files,
-                split_params=split_params,
-            )
-            self.tracker.log_data_artifact(
-                artifact_name(cfg.dataset, cfg.mu, "calib"),
-                files=calib_files,
-                split_params=split_params,
-            )
-            self.tracker.log_data_artifact(
-                artifact_name(cfg.dataset, cfg.mu, "test"),
-                files=test_files,
-                split_params=split_params,
-            )
 
         return X_train, y_train, X_val, y_val, calib_data, calib_meta, test_files
 

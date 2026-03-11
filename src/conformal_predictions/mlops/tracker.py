@@ -80,6 +80,7 @@ class Tracker:
                     project=self._config.wandb_project,
                     entity=self._config.wandb_entity or None,
                     name=self._ctx.run_id,
+                    job_type="callbacks-training",
                     config=config_snapshot,
                     reinit=True,
                 )
@@ -211,6 +212,49 @@ class Tracker:
     # ------------------------------------------------------------------
     # Finish
     # ------------------------------------------------------------------
+
+    def prepare_data_lineage(
+        self,
+        raw_name: str,
+        raw_files: "Sequence[str | Path]",
+        splits: "dict[str, Sequence[str | Path]]",
+        split_params: dict | None = None,
+    ) -> None:
+        """Log raw and split data artifacts via dedicated helper runs.
+
+        Creates two short-lived W&B runs ("dataset-logging" and
+        "dataset-splitting") that produce the correct lineage graph:
+        ``raw → splits``.  Must be called **before** :meth:`start` so
+        the helper runs don't interfere with the main training run.
+
+        When ``artifact_version`` is not ``"latest"`` (pinned), this
+        method is a no-op because pinned artifacts are consumed via
+        ``use_artifact`` in the main run instead.
+        """
+        if not self._config.wandb_enabled or not _WANDB_AVAILABLE:
+            return
+        if self._config.artifact_version != "latest":
+            return
+
+        from conformal_predictions.mlops.artifacts import (
+            log_raw_data_run,
+            log_split_data_run,
+        )
+
+        log_raw_data_run(
+            project=self._config.wandb_project,
+            entity=self._config.wandb_entity,
+            name=raw_name,
+            files=raw_files,
+            metadata=split_params,
+        )
+        log_split_data_run(
+            project=self._config.wandb_project,
+            entity=self._config.wandb_entity,
+            raw_artifact_name=raw_name,
+            splits=splits,
+            metadata=split_params,
+        )
 
     def log_data_artifact(
         self,
