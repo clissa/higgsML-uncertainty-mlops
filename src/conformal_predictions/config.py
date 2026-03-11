@@ -152,6 +152,9 @@ class TrackingConfig:
         wandb entity (team/user).  Defaults to the wandb default entity.
     index_path : str
         Path to the local run index JSON file.
+    artifact_version : str
+        ``"latest"`` to log fresh W&B artifacts each run; a pinned
+        version string (e.g. ``"v3"``) to declare usage without logging.
     """
 
     enabled: bool = True
@@ -159,6 +162,7 @@ class TrackingConfig:
     wandb_project: str = "higgsML-uncertainty"
     wandb_entity: Optional[str] = None
     index_path: str = "results/runs_index.json"
+    artifact_version: str = "latest"
 
     def to_dict(self) -> dict:
         return asdict(self)

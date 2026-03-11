@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Sequence
 
 if TYPE_CHECKING:
     from conformal_predictions.config import TrackingConfig
@@ -210,6 +210,54 @@ class Tracker:
 
     # ------------------------------------------------------------------
     # Finish
+    # ------------------------------------------------------------------
+
+    def log_data_artifact(
+        self,
+        name: str,
+        files: "Sequence[str | Path]",
+        split_params: dict | None = None,
+    ) -> object | None:
+        """Log a data artifact (reference-only) via :mod:`artifacts`.
+
+        Uses ``self._config.artifact_version`` to decide between
+        logging a new artifact or declaring usage of a pinned one.
+        """
+        from conformal_predictions.mlops.artifacts import log_or_use_data_artifact
+
+        return log_or_use_data_artifact(
+            self._wandb_run,
+            name,
+            files,
+            split_params=split_params,
+            version=self._config.artifact_version,
+        )
+
+    def use_data_artifact(self, name: str, version: str | None = None) -> object | None:
+        """Declare consumption of an existing data artifact (lineage)."""
+        from conformal_predictions.mlops.artifacts import log_or_use_data_artifact
+
+        ver = version or self._config.artifact_version
+        # Force use_artifact path by passing a non-"latest" version.
+        # If ver is "latest" we still want use_artifact, so pass "latest" as pinned.
+        return log_or_use_data_artifact(
+            self._wandb_run,
+            name,
+            files=[],
+            version=ver if ver != "latest" else "latest",
+        )
+
+    def log_model_artifact(
+        self,
+        model_dir: "str | Path",
+        run_id: str,
+        model_name: str,
+    ) -> object | None:
+        """Log a trained model artifact (uploaded) via :mod:`artifacts`."""
+        from conformal_predictions.mlops.artifacts import log_model_artifact
+
+        return log_model_artifact(self._wandb_run, model_dir, run_id, model_name)
+
     # ------------------------------------------------------------------
 
     def finish(self) -> None:
