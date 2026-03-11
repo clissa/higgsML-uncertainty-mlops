@@ -102,7 +102,8 @@ evaluation:
 #
 # WandB tracking enables:
 # - Real-time metric logging (accuracy, loss per epoch for MLP)
-# - Artifact versioning (trained models, calibration data)
+# - Artifact versioning (trained models uploaded; data as file:// references)
+# - Data lineage graph: raw data → splits → trained model
 # - Hyperparameter comparison across runs
 # - Reproducibility via config snapshots
 #
@@ -110,13 +111,14 @@ evaluation:
 # - Overview panel: run status, duration, git commit
 # - Charts: accuracy/loss curves for MLP training epochs
 # - Tables: final metrics for the selected model
-# - Artifacts: model checkpoints, calibration plots, run metadata JSON
+# - Artifacts: model checkpoints (uploaded), data splits (reference-only)
 #
 tracking:
   enabled: true                    # Enable local run indexing (JSON manifest)
   wandb_enabled: true              # Enable WandB cloud logging
   wandb_project: higgsML-uncertainty  # WandB project name (create via web UI or auto-created)
   wandb_entity: null               # WandB team/user (null = use default entity)
+  artifact_version: "latest"         # "latest" logs new artifacts; pinned (e.g. "v3") reuses existing
   index_path: results/runs_index.json  # Local run registry for cross-run queries
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -150,8 +152,9 @@ tracking:
 # 4. WANDB LOGGING:
 #    - Config uploaded at run start
 #    - Metrics logged after evaluation stage
-#    - Artifacts uploaded (plots, model files) at run completion
-#    - Total upload ~5-10 MB (plots dominate size)
+#    - Data artifacts logged as file:// references (no upload, stays on disk)
+#    - Model artifacts uploaded (~KB-MB for sklearn models)
+#    - Lineage graph: raw → {train,val,calib,test} splits → model
 #
 # Convergence Indicators:
 # - Validation accuracy plateau (MLP stops improving)

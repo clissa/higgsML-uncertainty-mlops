@@ -55,6 +55,7 @@ tracking:
   enabled: true
   wandb_enabled: false
   wandb_project: "higgsML-uncertainty"
+  artifact_version: "latest"         # "latest" logs new artifacts; pinned (e.g. "v3") reuses existing
 
 # --- Phase 4: Reporting ---
 reporting:
