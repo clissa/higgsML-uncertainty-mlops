@@ -246,13 +246,12 @@ class Tracker:
     def log_model_artifact(
         self,
         model_dir: "str | Path",
-        run_id: str,
         model_name: str,
     ) -> object | None:
         """Log a trained model artifact (uploaded) via :mod:`artifacts`."""
         from conformal_predictions.mlops.artifacts import log_model_artifact
 
-        return log_model_artifact(self._wandb_run, model_dir, run_id, model_name)
+        return log_model_artifact(self._wandb_run, model_dir, model_name)
 
     # ------------------------------------------------------------------
 

@@ -184,7 +184,7 @@ class TestNoOpWhenNone:
     def test_model_artifact_noop(self, tmp_path):
         model_dir = tmp_path / "models"
         model_dir.mkdir()
-        result = log_model_artifact(None, model_dir, "abc123", "mlp")
+        result = log_model_artifact(None, model_dir, "mlp")
         assert result is None
 
     @patch("conformal_predictions.mlops.artifacts._WANDB_AVAILABLE", False)
@@ -199,7 +199,7 @@ class TestNoOpWhenNone:
         run = _mock_wandb_run()
         model_dir = tmp_path / "models"
         model_dir.mkdir()
-        result = log_model_artifact(run, model_dir, "abc123", "mlp")
+        result = log_model_artifact(run, model_dir, "mlp")
         assert result is None
         run.log_artifact.assert_not_called()
 
@@ -222,9 +222,9 @@ class TestLogModelArtifact:
         (model_dir / "mlp.joblib").write_bytes(b"model-data")
         (model_dir / "scaler.joblib").write_bytes(b"scaler-data")
 
-        result = log_model_artifact(run, model_dir, "run123", "mlp")
+        result = log_model_artifact(run, model_dir, "mlp")
 
-        mock_wandb.Artifact.assert_called_once_with("run123-mlp", type="model")
+        mock_wandb.Artifact.assert_called_once_with("mlp", type="model")
         assert fake_art.add_file.call_count == 2
         run.log_artifact.assert_called_once_with(fake_art)
         assert result is fake_art
@@ -240,9 +240,9 @@ class TestLogModelArtifact:
         model_dir.mkdir()
         (model_dir / "bdt.joblib").write_bytes(b"data")
 
-        log_model_artifact(run, model_dir, "abc", "bdt")
+        log_model_artifact(run, model_dir, "bdt")
 
-        mock_wandb.Artifact.assert_called_once_with("abc-bdt", type="model")
+        mock_wandb.Artifact.assert_called_once_with("bdt", type="model")
 
     @patch("conformal_predictions.mlops.artifacts._WANDB_AVAILABLE", True)
     @patch("conformal_predictions.mlops.artifacts._wandb")
@@ -255,7 +255,7 @@ class TestLogModelArtifact:
         model_dir = tmp_path / "models"
         model_dir.mkdir()
 
-        result = log_model_artifact(run, model_dir, "run1", "mlp")
+        result = log_model_artifact(run, model_dir, "mlp")
 
         fake_art.add_file.assert_not_called()
         run.log_artifact.assert_called_once_with(fake_art)
@@ -274,7 +274,7 @@ class TestLogModelArtifact:
         (model_dir / "mlp.joblib").write_bytes(b"data")
         (model_dir / "subdir").mkdir()
 
-        log_model_artifact(run, model_dir, "run1", "mlp")
+        log_model_artifact(run, model_dir, "mlp")
 
         assert fake_art.add_file.call_count == 1
 
@@ -381,11 +381,10 @@ class TestTrackerArtifactMethods:
             "conformal_predictions.mlops.artifacts.log_model_artifact"
         ) as mock_log:
             mock_log.return_value = None
-            tracker.log_model_artifact(tmp_path / "models", "run1", "mlp")
+            tracker.log_model_artifact(tmp_path / "models", "mlp")
             mock_log.assert_called_once_with(
                 tracker._wandb_run,
                 tmp_path / "models",
-                "run1",
                 "mlp",
             )
 

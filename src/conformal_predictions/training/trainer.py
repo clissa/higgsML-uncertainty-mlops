@@ -351,6 +351,11 @@ class Trainer:
             self.load_data()
         )
 
+        # Declare consumption of train/val artifacts (lineage)
+        if self.tracker is not None:
+            self.tracker.use_data_artifact(artifact_name(cfg.dataset, cfg.mu, "train"))
+            self.tracker.use_data_artifact(artifact_name(cfg.dataset, cfg.mu, "val"))
+
         self.scaler = StandardScaler()
         X_train_scaled = self.scaler.fit_transform(X_train)
         X_val_scaled = self.scaler.transform(X_val)
@@ -413,7 +418,7 @@ class Trainer:
                 description=f"Trained {name} model with fitted scaler",
             )
         if self.tracker is not None:
-            self.tracker.log_model_artifact(models_dir, ctx.run_id, model_name)
+            self.tracker.log_model_artifact(models_dir, model_name)
 
         # ---- compute and store train predictions ----
         for name, model in self.models.items():

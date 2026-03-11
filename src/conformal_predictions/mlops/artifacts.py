@@ -104,10 +104,12 @@ def log_or_use_data_artifact(
 def log_model_artifact(
     wandb_run: object | None,
     model_dir: str | Path,
-    run_id: str,
     model_name: str,
 ) -> object | None:
     """Log a trained model artifact (uploaded to W&B).
+
+    The artifact is named *model_name* (e.g. ``"mlp"``).  W&B handles
+    version sequencing automatically (v0, v1, ..., latest).
 
     Parameters
     ----------
@@ -115,10 +117,8 @@ def log_model_artifact(
         Active ``wandb.Run`` instance, or ``None`` to no-op.
     model_dir
         Directory containing the serialised model file(s).
-    run_id
-        Current run identifier.
     model_name
-        Model name (e.g. ``"mlp"``).
+        Model name used as the W&B artifact name (e.g. ``"mlp"``).
 
     Returns
     -------
@@ -127,11 +127,10 @@ def log_model_artifact(
     if wandb_run is None or not _WANDB_AVAILABLE:
         return None
 
-    art_name = f"{run_id}-{model_name}"
     model_path = Path(model_dir)
 
     try:
-        art = _wandb.Artifact(art_name, type="model")
+        art = _wandb.Artifact(model_name, type="model")
         for f in sorted(model_path.iterdir()):
             if f.is_file():
                 art.add_file(str(f))
