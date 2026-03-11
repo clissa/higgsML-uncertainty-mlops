@@ -68,6 +68,7 @@ from conformal_predictions.evaluation.plots import (
 )
 from conformal_predictions.evaluation.pseudoexperiments import evaluate_on_test_set
 from conformal_predictions.evaluation.reports import generate_run_report
+from conformal_predictions.mlops.artifacts import artifact_name
 from conformal_predictions.mlops.log_keys import (
     EDA,
     ERROR_ANALYSIS,
@@ -194,6 +195,44 @@ class Trainer:
         y_train = np.concatenate(train_labels)
         X_val = np.vstack(val_blocks)
         y_val = np.concatenate(val_labels)
+
+        # -- Log data artifacts (Phase 4.9-A Step 4) --
+        if self.tracker is not None:
+            mu_dir = Path(cfg.data_dir) / f"mu={cfg.mu}"
+            all_npz = sorted(mu_dir.glob("*.npz"))
+            split_params = {
+                "seed": cfg.seed,
+                "valid_size": cfg.valid_size,
+                "calib_size": cfg.calib_size,
+                "test_prefixes": cfg.test_prefixes,
+            }
+            # Raw dataset artifact (all .npz files)
+            self.tracker.log_data_artifact(
+                artifact_name(cfg.dataset, cfg.mu, "raw"),
+                files=all_npz,
+                split_params=split_params,
+            )
+            # Per-split artifacts
+            self.tracker.log_data_artifact(
+                artifact_name(cfg.dataset, cfg.mu, "train"),
+                files=train_files,
+                split_params=split_params,
+            )
+            self.tracker.log_data_artifact(
+                artifact_name(cfg.dataset, cfg.mu, "val"),
+                files=val_files,
+                split_params=split_params,
+            )
+            self.tracker.log_data_artifact(
+                artifact_name(cfg.dataset, cfg.mu, "calib"),
+                files=calib_files,
+                split_params=split_params,
+            )
+            self.tracker.log_data_artifact(
+                artifact_name(cfg.dataset, cfg.mu, "test"),
+                files=test_files,
+                split_params=split_params,
+            )
 
         return X_train, y_train, X_val, y_val, calib_data, calib_meta, test_files
 
@@ -429,6 +468,11 @@ class Trainer:
                 "Calibration data not loaded. Call trainer.train() first."
             )
 
+        # Declare consumption of calib artifact (lineage)
+        if self.tracker is not None:
+            cfg = self.config
+            self.tracker.use_data_artifact(artifact_name(cfg.dataset, cfg.mu, "calib"))
+
         print("\nRunning calibration...")
         print(f"  {len(self._calib_data)} calibration experiments")
         print(f"  target={calib_config.target}  how={calib_config.how}")
@@ -519,6 +563,13 @@ class Trainer:
             )
         if self._test_files is None:
             raise RuntimeError("Test files not loaded. Call trainer.train() first.")
+
+        # Declare consumption of test artifact (lineage)
+        if self.tracker is not None:
+            cfg_ev = self.config
+            self.tracker.use_data_artifact(
+                artifact_name(cfg_ev.dataset, cfg_ev.mu, "test")
+            )
 
         print("\nRunning evaluation on test set...")
 

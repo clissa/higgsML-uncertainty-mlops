@@ -235,17 +235,13 @@ class Tracker:
 
     def use_data_artifact(self, name: str, version: str | None = None) -> object | None:
         """Declare consumption of an existing data artifact (lineage)."""
-        from conformal_predictions.mlops.artifacts import log_or_use_data_artifact
-
+        if self._wandb_run is None:
+            return None
         ver = version or self._config.artifact_version
-        # Force use_artifact path by passing a non-"latest" version.
-        # If ver is "latest" we still want use_artifact, so pass "latest" as pinned.
-        return log_or_use_data_artifact(
-            self._wandb_run,
-            name,
-            files=[],
-            version=ver if ver != "latest" else "latest",
-        )
+        try:
+            return self._wandb_run.use_artifact(f"{name}:{ver}")
+        except Exception:
+            return None
 
     def log_model_artifact(
         self,
