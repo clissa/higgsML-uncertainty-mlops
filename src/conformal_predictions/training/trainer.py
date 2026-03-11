@@ -32,6 +32,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import joblib
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from tqdm.auto import tqdm
@@ -397,6 +398,22 @@ class Trainer:
 
         # ---- fit (per-epoch, with train+val metric logging) ----
         self.fit(X_train_scaled, y_train, X_val_scaled, y_val)
+
+        # ---- serialize model + scaler ----
+        models_dir = ctx.output_dir / "models"
+        models_dir.mkdir(parents=True, exist_ok=True)
+        model_name = cfg.model.name
+        for name, model in self.models.items():
+            model_path = models_dir / f"{name}.joblib"
+            joblib.dump({"model": model, "scaler": self.scaler}, model_path)
+            ctx.save_artifact(
+                f"models/{name}.joblib",
+                type="model",
+                format="joblib",
+                description=f"Trained {name} model with fitted scaler",
+            )
+        if self.tracker is not None:
+            self.tracker.log_model_artifact(models_dir, ctx.run_id, model_name)
 
         # ---- compute and store train predictions ----
         for name, model in self.models.items():
