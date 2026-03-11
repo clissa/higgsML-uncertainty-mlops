@@ -35,3 +35,11 @@
 ### Pattern: Validate config eagerly in __post_init__
 - **Lesson**: Frozen dataclass `__post_init__` is the right place to validate enum-like fields (e.g., model name). Errors surface at config load time, not at training time.
 - **Rule**: Use `__post_init__` for validation in frozen dataclasses; raise clear `ValueError` with valid options listed.
+
+## Bug Fix — mu_hat test-set bias (2026-03-11)
+
+### Pattern: Pass derived state through all pipeline stages
+- **Bug**: `Trainer.evaluate()` called `evaluate_on_test_set()` without `ref_efficiencies_dict`, causing it to default to `(1.0, 1.0)`. Calibration stage passed them correctly, so calibration mu_hat ≈ 1.0 but test mu_hat ≈ -0.94.
+- **Root cause**: When `evaluate()` was wired up, the `ref_efficiencies_dict` kwarg was omitted from the call despite `self._ref_efficiencies` being available.
+- **Rule**: When a downstream function has an Optional parameter with a fallback default (e.g., `ref_efficiencies_dict=None` → `{name: (1.0, 1.0)}`), always pass the real value explicitly. Silent defaults on physics quantities are dangerous.
+- **Detection**: The calibration mu_hat was correct (~1.0) while test mu_hat was biased (~-0.94). Comparing calibration vs test mu_hat distributions immediately reveals the inconsistency.

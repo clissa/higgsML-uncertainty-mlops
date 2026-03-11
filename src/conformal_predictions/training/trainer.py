@@ -536,6 +536,7 @@ class Trainer:
             eval_config=eval_config,
             calibration_result=calibration_result,
             output_dir=self.run_ctx.output_dir,
+            ref_efficiencies_dict=self._ref_efficiencies,
             ctx=self.run_ctx,
         )
 

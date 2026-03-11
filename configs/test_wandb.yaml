@@ -26,7 +26,7 @@ seed: null                           # Fixed random seed for deterministic resul
 # Total experiments: ~1000 drawn from data_dir
 # Split: ~600 train, ~150 validation, ~125 calibration, ~125 test
 # test_prefixes: ["00", "01"]        # Hold out experiments starting with these hex prefixes
-n_test_experiments: 500            # Number of held-out test experiments
+n_test_experiments: 1000            # Number of held-out test experiments
 valid_size: 0.2                    # 20% of remaining data for validation
 calib_size: 0.3                    # 30% of validation set used for calibration
 
@@ -36,9 +36,9 @@ calib_size: 0.3                    # 30% of validation set used for calibration
 model:
   name: mlp
   params:
-    hidden_layer_sizes: [32, 16]
+    hidden_layer_sizes: [128, 16, 32]
     activation: relu
-    max_iter: 20
+    max_iter: 100
 
 # Model Inference Parameters
 # ───────────────────────────
